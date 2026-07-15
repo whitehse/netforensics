@@ -19,13 +19,15 @@ through CPE NAT, core IPFIX hops, and BGP egress at a historical millisecond.
 
 ```
 cpe/
-  forensicsd.c          — OpenWrt daemon (syscalls: netlink, timers)
+  forensicsd.c          — --demo | --netlink daemon entry
   sysctl/99-forensics.conf
 src/
-  ipfix_ingest.c        — libipfix collector glue (app buffer → events)
+  nfct_netlink.c        — AF_NETLINK NETLINK_NETFILTER membership + recv
+  ipfix_ingest.c        — libipfix collector glue
   flow_correlate.c      — pure helpers joining tuples (no I/O)
 include/
   netforensics.h
+  nfct_netlink.h
 sql/
   001_schema.sql        — tables + async insert settings
   002_dictionary.sql    — IP_TRIE historical RIB
