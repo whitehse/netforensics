@@ -132,10 +132,24 @@ static int run_demo(const char *router_id)
     wr32_be(wsynth + 16, 3);
     nl80211_parse_feed_input(wifi, wsynth, sizeof(wsynth));
     while (nl80211_parse_next_event(wifi, &wev) == 1) {
-        char wbuf[256];
-        nl80211_event_to_string(&wev, wbuf, sizeof(wbuf));
-        printf("{\"type\":\"cpe_wifi\",\"router\":\"%s\",\"detail\":\"%s\"}\n",
-               router_id, wbuf);
+        if (wev.type == NL80211_EVENT_STATION && wev.has_mac) {
+            printf("{\"type\":\"cpe_wifi\",\"router\":\"%s\",\"ts\":%llu,"
+                   "\"client_mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\","
+                   "\"rssi\":%d,\"snr\":%d,\"mcs\":%u,\"tx_retries\":%u,"
+                   "\"freq_mhz\":%u}\n",
+                   router_id, (unsigned long long)now_ms(),
+                   wev.client_mac[0], wev.client_mac[1], wev.client_mac[2],
+                   wev.client_mac[3], wev.client_mac[4], wev.client_mac[5],
+                   (int)wev.signal_dbm, (int)wev.snr_db,
+                   (unsigned)wev.mcs_index, (unsigned)wev.tx_retries,
+                   (unsigned)wev.frequency_mhz);
+        } else {
+            char wbuf[256];
+            nl80211_event_to_string(&wev, wbuf, sizeof(wbuf));
+            printf("{\"type\":\"cpe_wifi\",\"router\":\"%s\",\"detail\":\"%s\"}\n",
+                   router_id, wbuf);
+        }
+        fflush(stdout);
     }
 
     nfct_destroy(nfct);

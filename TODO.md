@@ -10,7 +10,7 @@ Further work to explore. Ordered by module.
 - [x] ClickHouse DDL sketch + query stubs
 - [x] Vector config skeleton
 - [x] CPE sysctl template + daemon stub using nfct/nl80211_parse
-- [ ] Host integration test with synthetic IPFIX + nfct frames
+- [x] Host integration test with synthetic IPFIX + nfct frames (`test_host_pipeline`)
 
 ## MODULE 1 — OpenWrt CPE daemon
 
@@ -22,11 +22,11 @@ Further work to explore. Ordered by module.
 - [x] NDJSON fields: event, ip_version, ct_id; IPv6 + DESTROY-id observations
 - [x] IPv6 path correlation in nf_flows_correlate
 - [ ] Periodic nl80211 station dump via generic netlink
-- [ ] Full nl80211 attr decode (libnetdiag)
-- [ ] Output: stdout NDJSON and/or Unix datagram to Vector agent
+- [x] Full nl80211 nested STA_INFO attr decode (libnetdiag)
+- [x] Output: stdout NDJSON (`cpe_nat`, structured `cpe_wifi`) for Vector/journald
 - [ ] OpenWrt package Makefile / cross-compile notes
 - [ ] Resource limits for MIPS/ARM (fixed buffers, no heap on event path)
-- [ ] Capability dropping after bind; systemd unit with `AmbientCapabilities=CAP_NET_ADMIN`
+- [x] systemd unit with `AmbientCapabilities=CAP_NET_ADMIN` (`deploy/forensicsd.service`)
 
 ## MODULE 2 — Ingest gateway
 
@@ -46,7 +46,7 @@ Further work to explore. Ordered by module.
 ## MODULE 4 — Queries
 
 - [x] Stub SQL for outbound, inbound, blast radius
-- [ ] Validate joins against synthetic fixtures
+- [x] Validate join keys against synthetic fixtures (host_pipeline SQL shapes)
 - [ ] Parameterize router_id / time window helpers
 - [ ] Grafana / notebook examples
 
@@ -60,5 +60,5 @@ Further work to explore. Ordered by module.
 ## Library follow-ups
 
 - [ ] libipfix exporter path if CPE ever emits IPFIX instead of JSON
-- [ ] libnetdiag full nfct/nl80211 decoders
+- [x] libnetdiag full nfct + nl80211 STA_INFO decoders (remaining: live gnl dump in daemon)
 - [ ] New sibling: libbgp/libbmp for BGP Monitoring Protocol PDUs?

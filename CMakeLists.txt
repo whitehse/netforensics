@@ -54,3 +54,7 @@ enable_testing()
 add_executable(test_correlate tests/test_correlate.c)
 target_link_libraries(test_correlate PRIVATE netforensics_core)
 add_test(NAME correlate COMMAND test_correlate)
+
+add_executable(test_host_pipeline tests/test_host_pipeline.c)
+target_link_libraries(test_host_pipeline PRIVATE netforensics_core)
+add_test(NAME host_pipeline COMMAND test_host_pipeline)
