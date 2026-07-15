@@ -1,0 +1,9 @@
+# Example CPE daemon config (parsed later via libyaml)
+router_id: cpe-demo-001
+emit:
+  mode: stdout   # stdout | unix_dgram
+  path: /var/run/forensics.sock
+netlink:
+  conntrack_groups: [new, destroy]
+wifi:
+  interval_ms: 5000
