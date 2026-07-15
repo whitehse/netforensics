@@ -24,6 +24,7 @@ cpe/
 src/
   nfct_netlink.c        — AF_NETLINK NETLINK_NETFILTER membership + recv
   ipfix_ingest.c        — libipfix collector glue
+  bmp_ingest.c          — libbmp events → nf_bmp_obs_t / NDJSON
   flow_correlate.c      — pure helpers joining tuples (no I/O)
 include/
   netforensics.h
@@ -53,6 +54,7 @@ tests/
 | IPFIX templates + 5-tuple | `ipfix_feed_*`, `ipfix_record_flow_key`, convenience BGP/next-hop |
 | Conntrack NEW/DESTROY | `nfct_feed_input`, `nfct_event_forensics_tuple` / `_v6` |
 | Wi-Fi RSSI/MCS/retries | `nl80211_parse_feed_input` (synth + nested STA_INFO attrs) |
+| BMP (BGP monitoring) | **libbmp** `bmp_feed_*` + app `nf_bmp_collect*` → NDJSON |
 | Edge ping/ARP health | existing libnetdiag ping/arping (optional) |
 | Config | libyaml (future) |
 | HTTP batch ingest | librest or Vector |
@@ -85,9 +87,23 @@ DESTROY-with-id observations.
 4. Format NDJSON + SQL INSERT fixtures matching `sql/001_schema.sql`
 5. Nested nl80211 STA_INFO attrs → structured `cpe_wifi` NDJSON
 
+## BMP ingest path
+
+```
+BMP speaker ──TCP──▶ app gateway (I/O)
+                        │ bmp_feed_input / nf_bmp_collect_stream
+                        ▼
+                     libbmp (parse only)
+                        │
+                        ▼
+                   nf_bmp_obs_format → NDJSON → Vector → CH bgp_updates
+```
+
+Nested BGP UPDATE NLRI decode remains opaque payload (libbmp ADR-008).
+Optional: Kafka source with pre-parsed gobmp JSON still works in `vector.yaml`.
+
 ## Deliberate absences
 
 - ClickHouse not required for unit/host tests
-- BMP/BGP decoder library does not exist yet — SQL + Vector Kafka source first
-- Periodic live nl80211 station dump socket in forensicsd (attrs decode ready)
-- OpenWrt package / cross-compile packaging
+- Full BGP path-attribute decode (future libbgp)
+- OpenWrt package is skeleton only; cross-compile in production feed

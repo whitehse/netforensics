@@ -61,4 +61,5 @@ Further work to explore. Ordered by module.
 
 - [ ] libipfix exporter path if CPE ever emits IPFIX instead of JSON
 - [x] libnetdiag full nfct + nl80211 STA_INFO decoders + live gnl dump in daemon
-- [x] New sibling: libbmp (BMP common/peer headers; BGP UPDATE still open)
+- [x] New sibling: libbmp (ADRs applied; queue overflow, fixed reassembly, payload slots)
+- [x] App glue: `bmp_ingest` + `bmp_ingest_demo` + Vector `bmp_ndjson` source

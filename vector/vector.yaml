@@ -26,6 +26,16 @@ sources:
       codec: bytes
     # Downstream: C sidecar with libipfix → JSON, or Vector WASM/lua later
 
+  # Prefer pure-C sidecar: TCP BMP → libbmp → NDJSON on this socket.
+  # See bmp_ingest_demo / nf_bmp_collect_stream.
+  bmp_ndjson:
+    type: socket
+    mode: tcp
+    address: "0.0.0.0:5000"
+    decoding:
+      codec: json
+
+  # Optional: external gobmp (or similar) pre-parsed JSON on Kafka.
   bgp_kafka:
     type: kafka
     bootstrap_servers: "kafka:9092"
@@ -45,7 +55,7 @@ transforms:
 
   batch_guard:
     type: remap
-    inputs: [cpe_route.nat, cpe_route.wifi, bgp_kafka]
+    inputs: [cpe_route.nat, cpe_route.wifi, bmp_ndjson, bgp_kafka]
     source: |
       .ingested_at = now()
 
@@ -78,7 +88,7 @@ sinks:
 
   clickhouse_bgp:
     type: clickhouse
-    inputs: [bgp_kafka]
+    inputs: [bmp_ndjson, bgp_kafka]
     endpoint: "http://clickhouse:8123"
     database: forensics
     table: bgp_updates

@@ -38,6 +38,7 @@ ctest --test-dir build
 - **Must** keep netlink sockets and ClickHouse HTTP in the app; libraries only parse buffers.
 - **Must** use `nfct` forensics 5-tuple fields for CPE NAT correlation keys.
 - **Must** use `ipfix_record_flow_key` / convenience BGP fields for core flow joins.
+- **Must** use **libbmp** for BMP framing (`bmp_feed_*`); app owns TCP and maps events via `nf_bmp_collect*` / `nf_bmp_obs_format`.
 - **Prefer** ClickHouse native types (`IPv4`, `DateTime64(3)`, `LowCardinality`) as in design.
 - **Never** allocate on CPE hot path after startup (fixed buffers).
 

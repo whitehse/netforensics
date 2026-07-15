@@ -11,12 +11,16 @@ endif()
 
 set(IPFIX_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../libipfix" CACHE PATH "libipfix root")
 set(NETDIAG_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../libnetdiag" CACHE PATH "libnetdiag root")
+set(BMP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../libbmp" CACHE PATH "libbmp root")
 
 if(NOT EXISTS "${IPFIX_ROOT}/include/ipfix.h")
     message(FATAL_ERROR "libipfix not found at ${IPFIX_ROOT}")
 endif()
 if(NOT EXISTS "${NETDIAG_ROOT}/include/netdiag.h")
     message(FATAL_ERROR "libnetdiag not found at ${NETDIAG_ROOT}")
+endif()
+if(NOT EXISTS "${BMP_ROOT}/include/bmp.h")
+    message(FATAL_ERROR "libbmp not found at ${BMP_ROOT}")
 endif()
 
 add_library(ipfix STATIC ${IPFIX_ROOT}/src/ipfix.c)
@@ -34,22 +38,29 @@ add_library(netdiag STATIC
 )
 target_include_directories(netdiag PUBLIC ${NETDIAG_ROOT}/include)
 
+add_library(bmp STATIC ${BMP_ROOT}/src/bmp.c)
+target_include_directories(bmp PUBLIC ${BMP_ROOT}/include)
+
 add_library(netforensics_core STATIC
     src/flow_correlate.c
     src/ipfix_ingest.c
+    src/bmp_ingest.c
     src/nfct_netlink.c
     src/nl80211_netlink.c
 )
 target_include_directories(netforensics_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
-target_link_libraries(netforensics_core PUBLIC ipfix netdiag)
+target_link_libraries(netforensics_core PUBLIC ipfix netdiag bmp)
 
 add_executable(forensicsd cpe/forensicsd.c)
 target_link_libraries(forensicsd PRIVATE netforensics_core)
 
 add_executable(ipfix_ingest_demo src/ipfix_ingest_main.c)
 target_link_libraries(ipfix_ingest_demo PRIVATE netforensics_core)
+
+add_executable(bmp_ingest_demo src/bmp_ingest_main.c)
+target_link_libraries(bmp_ingest_demo PRIVATE netforensics_core)
 
 enable_testing()
 add_executable(test_correlate tests/test_correlate.c)
@@ -63,3 +74,7 @@ add_test(NAME host_pipeline COMMAND test_host_pipeline)
 add_executable(test_sql_fixtures tests/test_sql_fixtures.c)
 target_link_libraries(test_sql_fixtures PRIVATE netforensics_core)
 add_test(NAME sql_fixtures COMMAND test_sql_fixtures)
+
+add_executable(test_bmp_ingest tests/test_bmp_ingest.c)
+target_link_libraries(test_bmp_ingest PRIVATE netforensics_core)
+add_test(NAME bmp_ingest COMMAND test_bmp_ingest)
