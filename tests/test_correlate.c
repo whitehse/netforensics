@@ -150,6 +150,22 @@ int main(void)
         assert(vobs.is_ipv6);
         assert(nf_obs_format(&vobs, line, sizeof(line)) == 0);
         assert(strstr(line, "ip_version\":6") != NULL);
+
+        /* IPv6 correlate: core flow sourced from post-NAT WAN */
+        {
+            nf_flow_obs_t core6;
+            memset(&core6, 0, sizeof(core6));
+            core6.from_cpe = 0;
+            core6.is_ipv6 = 1;
+            core6.protocol = 17;
+            core6.src_port = 2222;
+            core6.ts_ms = 2;
+            memcpy(core6.src_ip6, v6.wan_src_ip6, 16);
+            memcpy(core6.dst_ip6, v6.lan_dst_ip6, 16);
+            assert(nf_flows_correlate(&vobs, &core6, 1000) == 1);
+            core6.src_port = 9999;
+            assert(nf_flows_correlate(&vobs, &core6, 1000) == 0);
+        }
     }
 
     printf("correlate test PASSED\n");

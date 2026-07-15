@@ -110,17 +110,43 @@ int nf_flows_correlate(const nf_flow_obs_t *cpe, const nf_flow_obs_t *core,
     if (!cpe || !core || !cpe->from_cpe || core->from_cpe) {
         return -1;
     }
-    if (cpe->is_ipv6 || core->is_ipv6) {
-        return 0; /* IPv4 path only for now */
-    }
-    if (cpe->wan_src_ip != core->src_ip || cpe->wan_src_port != core->src_port) {
+    /* Address family must match */
+    if (cpe->is_ipv6 != core->is_ipv6) {
         return 0;
     }
     if (cpe->protocol != core->protocol) {
         return 0;
     }
-    if (cpe->dst_ip != 0 && core->dst_ip != 0 && cpe->dst_ip != core->dst_ip) {
-        return 0;
+    if (cpe->is_ipv6) {
+        /* CPE post-NAT WAN source ↔ core flow source (outbound) */
+        if (memcmp(cpe->wan_src_ip6, core->src_ip6, NFCT_IPV6_LEN) != 0) {
+            return 0;
+        }
+        if (cpe->wan_src_port != core->src_port) {
+            return 0;
+        }
+        /* Optional destination check when both known */
+        {
+            int dst_zero = 1;
+            int i;
+            for (i = 0; i < NFCT_IPV6_LEN; i++) {
+                if (cpe->dst_ip6[i] != 0) {
+                    dst_zero = 0;
+                    break;
+                }
+            }
+            if (!dst_zero &&
+                memcmp(cpe->dst_ip6, core->dst_ip6, NFCT_IPV6_LEN) != 0) {
+                return 0;
+            }
+        }
+    } else {
+        if (cpe->wan_src_ip != core->src_ip || cpe->wan_src_port != core->src_port) {
+            return 0;
+        }
+        if (cpe->dst_ip != 0 && core->dst_ip != 0 && cpe->dst_ip != core->dst_ip) {
+            return 0;
+        }
     }
     dt = (cpe->ts_ms > core->ts_ms) ? (cpe->ts_ms - core->ts_ms)
                                     : (core->ts_ms - cpe->ts_ms);
