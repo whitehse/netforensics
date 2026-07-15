@@ -18,7 +18,7 @@ Further work to explore. Ordered by module.
 - [x] Daemon stub emitting NDJSON from synthetic nfct/nl80211 frames
 - [x] Real `AF_NETLINK` / `NETLINK_NETFILTER` + `NETLINK_ADD_MEMBERSHIP` for NEW/DESTROY (`--netlink`)
 - [x] `nfct_netlink` helper (open/recv/nonblock) in app, feed into libnetdiag `nfct`
-- [ ] Full CTA attribute decode (track in libnetdiag TODO) — live events may be PARTIAL today
+- [x] Full CTA attribute decode in libnetdiag — live events yield LAN/WAN 5-tuples when present
 - [ ] Periodic nl80211 station dump via generic netlink
 - [ ] Full nl80211 attr decode (libnetdiag)
 - [ ] Output: stdout NDJSON and/or Unix datagram to Vector agent
