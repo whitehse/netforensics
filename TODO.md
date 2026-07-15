@@ -16,13 +16,15 @@ Further work to explore. Ordered by module.
 
 - [x] `cpe/sysctl/99-forensics.conf` template
 - [x] Daemon stub emitting NDJSON from synthetic nfct/nl80211 frames
-- [ ] Real `AF_NETLINK` / `NETLINK_NETFILTER` bind to NFCT_GROUP_NEW|DESTROY
-- [ ] Full CTA attribute decode (track in libnetdiag TODO)
+- [x] Real `AF_NETLINK` / `NETLINK_NETFILTER` + `NETLINK_ADD_MEMBERSHIP` for NEW/DESTROY (`--netlink`)
+- [x] `nfct_netlink` helper (open/recv/nonblock) in app, feed into libnetdiag `nfct`
+- [ ] Full CTA attribute decode (track in libnetdiag TODO) — live events may be PARTIAL today
 - [ ] Periodic nl80211 station dump via generic netlink
 - [ ] Full nl80211 attr decode (libnetdiag)
 - [ ] Output: stdout NDJSON and/or Unix datagram to Vector agent
 - [ ] OpenWrt package Makefile / cross-compile notes
 - [ ] Resource limits for MIPS/ARM (fixed buffers, no heap on event path)
+- [ ] Capability dropping after bind; systemd unit with `AmbientCapabilities=CAP_NET_ADMIN`
 
 ## MODULE 2 — Ingest gateway
 

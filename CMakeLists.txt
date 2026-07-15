@@ -3,7 +3,7 @@ project(netforensics LANGUAGES C VERSION 0.1.0)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_C_EXTENSIONS ON) # poll, netlink, clock_gettime
 
 if(NOT MSVC)
     add_compile_options(-Wall -Wextra -Wpedantic -Werror)
@@ -37,6 +37,7 @@ target_include_directories(netdiag PUBLIC ${NETDIAG_ROOT}/include)
 add_library(netforensics_core STATIC
     src/flow_correlate.c
     src/ipfix_ingest.c
+    src/nfct_netlink.c
 )
 target_include_directories(netforensics_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
