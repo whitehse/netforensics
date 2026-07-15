@@ -38,6 +38,7 @@ add_library(netforensics_core STATIC
     src/flow_correlate.c
     src/ipfix_ingest.c
     src/nfct_netlink.c
+    src/nl80211_netlink.c
 )
 target_include_directories(netforensics_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -58,3 +59,7 @@ add_test(NAME correlate COMMAND test_correlate)
 add_executable(test_host_pipeline tests/test_host_pipeline.c)
 target_link_libraries(test_host_pipeline PRIVATE netforensics_core)
 add_test(NAME host_pipeline COMMAND test_host_pipeline)
+
+add_executable(test_sql_fixtures tests/test_sql_fixtures.c)
+target_link_libraries(test_sql_fixtures PRIVATE netforensics_core)
+add_test(NAME sql_fixtures COMMAND test_sql_fixtures)

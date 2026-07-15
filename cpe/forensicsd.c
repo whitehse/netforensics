@@ -14,6 +14,7 @@
 
 #include "netforensics.h"
 #include "nl80211_parse.h"
+#include "nl80211_netlink.h"
 #include "nfct_netlink.h"
 
 #include <errno.h>
@@ -157,13 +158,93 @@ static int run_demo(const char *router_id)
     return 0;
 }
 
-static int run_netlink(const char *router_id, int join_update)
+static void emit_wifi_events(nl80211_parse_ctx *wifi, const char *router_id,
+                             uint64_t ts)
+{
+    nl80211_event_t wev;
+    while (nl80211_parse_next_event(wifi, &wev) == 1) {
+        if (wev.type == NL80211_EVENT_STATION && wev.has_mac) {
+            printf("{\"type\":\"cpe_wifi\",\"router\":\"%s\",\"ts\":%llu,"
+                   "\"client_mac\":\"%02x:%02x:%02x:%02x:%02x:%02x\","
+                   "\"rssi\":%d,\"snr\":%d,\"mcs\":%u,\"tx_retries\":%u,"
+                   "\"freq_mhz\":%u}\n",
+                   router_id, (unsigned long long)ts,
+                   wev.client_mac[0], wev.client_mac[1], wev.client_mac[2],
+                   wev.client_mac[3], wev.client_mac[4], wev.client_mac[5],
+                   (int)wev.signal_dbm, (int)wev.snr_db,
+                   (unsigned)wev.mcs_index, (unsigned)wev.tx_retries,
+                   (unsigned)wev.frequency_mhz);
+            fflush(stdout);
+        }
+    }
+}
+
+static void wifi_dump_once(int wfd, int family_id, int ifindex,
+                           nl80211_parse_ctx *wifi, const char *router_id)
+{
+    char err[128];
+    uint8_t buf[8192];
+    int n;
+
+    if (wfd < 0 || family_id <= 0 || ifindex <= 0 || !wifi) {
+        return;
+    }
+    if (nl80211_netlink_dump_stations(wfd, family_id, ifindex, err,
+                                      sizeof(err)) != 0) {
+        fprintf(stderr, "forensicsd: wifi dump: %s\n", err);
+        return;
+    }
+    for (;;) {
+        n = nl80211_netlink_recv(wfd, buf, sizeof(buf));
+        if (n == 0) {
+            break;
+        }
+        if (n < 0) {
+            break;
+        }
+        /* Done when NLMSG_DONE appears — still feed all for parse */
+        (void)nl80211_parse_feed_input(wifi, buf, (size_t)n);
+        emit_wifi_events(wifi, router_id, now_ms());
+        /* Detect NLMSG_DONE (type 0x3) in multi-part dump */
+        {
+            size_t off = 0;
+            int done = 0;
+            while (off + 16 <= (size_t)n) {
+                uint32_t len = ((uint32_t)buf[off]) |
+                               ((uint32_t)buf[off + 1] << 8) |
+                               ((uint32_t)buf[off + 2] << 16) |
+                               ((uint32_t)buf[off + 3] << 24);
+                uint16_t type = (uint16_t)buf[off + 4] |
+                                ((uint16_t)buf[off + 5] << 8);
+                if (len < 16 || off + len > (size_t)n) {
+                    break;
+                }
+                if (type == 0x3 /* NLMSG_DONE */) {
+                    done = 1;
+                }
+                off += (len + 3u) & ~3u;
+            }
+            if (done) {
+                break;
+            }
+        }
+    }
+}
+
+static int run_netlink(const char *router_id, int join_update,
+                       const char *wifi_if, int wifi_interval_ms)
 {
     char err[256];
     uint8_t buf[8192];
     nfct_ctx *nfct;
+    nl80211_parse_ctx *wifi = NULL;
     int fd;
-    struct pollfd pfd;
+    int wfd = -1;
+    int family_id = 0;
+    int ifindex = -1;
+    struct pollfd pfds[2];
+    int npfd = 1;
+    uint64_t last_wifi_ms = 0;
 
     nfct = nfct_create(NFCT_ROLE_COLLECTOR);
     if (!nfct) {
@@ -187,6 +268,36 @@ static int run_netlink(const char *router_id, int join_update)
         return 1;
     }
 
+    if (wifi_if && wifi_if[0]) {
+        ifindex = nf_if_nametoindex(wifi_if);
+        if (ifindex < 0) {
+            fprintf(stderr, "forensicsd: wifi if %s not found (continuing without)\n",
+                    wifi_if);
+        } else {
+            wfd = nl80211_netlink_open(&family_id, err, sizeof(err));
+            if (wfd < 0) {
+                fprintf(stderr, "forensicsd: nl80211 open: %s (continuing without)\n",
+                        err);
+            } else {
+                (void)nl80211_netlink_set_nonblock(wfd);
+                wifi = nl80211_parse_create(NL80211_PARSE_ROLE_COLLECTOR);
+                if (!wifi) {
+                    nl80211_netlink_close(wfd);
+                    wfd = -1;
+                } else {
+                    npfd = 2;
+                    if (wifi_interval_ms <= 0) {
+                        wifi_interval_ms = 5000;
+                    }
+                    fprintf(stderr,
+                            "forensicsd: wifi station dump if=%s ifindex=%d "
+                            "interval_ms=%d\n",
+                            wifi_if, ifindex, wifi_interval_ms);
+                }
+            }
+        }
+    }
+
     signal(SIGINT, on_sig);
     signal(SIGTERM, on_sig);
 
@@ -194,11 +305,32 @@ static int run_netlink(const char *router_id, int join_update)
             "forensicsd: netlink conntrack listening (router_id=%s groups=NEW%sDESTROY)\n",
             router_id, join_update ? ",UPDATE," : ",");
 
-    pfd.fd = fd;
-    pfd.events = POLLIN;
+    pfds[0].fd = fd;
+    pfds[0].events = POLLIN;
+    if (npfd == 2) {
+        pfds[1].fd = wfd;
+        pfds[1].events = POLLIN;
+    }
 
+    last_wifi_ms = now_ms();
     while (!g_stop) {
-        int pr = poll(&pfd, 1, 1000);
+        int timeout = 1000;
+        int pr;
+        uint64_t now;
+
+        if (wfd >= 0 && wifi_interval_ms > 0) {
+            uint64_t elapsed = now_ms() - last_wifi_ms;
+            if (elapsed >= (uint64_t)wifi_interval_ms) {
+                timeout = 0;
+            } else {
+                timeout = (int)((uint64_t)wifi_interval_ms - elapsed);
+                if (timeout > 1000) {
+                    timeout = 1000;
+                }
+            }
+        }
+
+        pr = poll(pfds, (nfds_t)npfd, timeout);
         if (pr < 0) {
             if (errno == EINTR) {
                 continue;
@@ -206,14 +338,22 @@ static int run_netlink(const char *router_id, int join_update)
             fprintf(stderr, "forensicsd: poll: %s\n", strerror(errno));
             break;
         }
+
+        now = now_ms();
+        if (wfd >= 0 && wifi &&
+            (now - last_wifi_ms) >= (uint64_t)wifi_interval_ms) {
+            wifi_dump_once(wfd, family_id, ifindex, wifi, router_id);
+            last_wifi_ms = now;
+        }
+
         if (pr == 0) {
             continue;
         }
-        if (pfd.revents & (POLLERR | POLLHUP)) {
+        if (pfds[0].revents & (POLLERR | POLLHUP)) {
             fprintf(stderr, "forensicsd: netlink hangup/error\n");
             break;
         }
-        if (pfd.revents & POLLIN) {
+        if (pfds[0].revents & POLLIN) {
             for (;;) {
                 int n = nfct_netlink_recv(fd, buf, sizeof(buf));
                 if (n == 0) {
@@ -232,6 +372,10 @@ static int run_netlink(const char *router_id, int join_update)
         }
     }
 
+    nl80211_netlink_close(wfd);
+    if (wifi) {
+        nl80211_parse_destroy(wifi);
+    }
     nfct_netlink_close(fd);
     nfct_destroy(nfct);
     fprintf(stderr, "forensicsd: netlink shutdown\n");
@@ -242,18 +386,23 @@ static void usage(const char *argv0)
 {
     fprintf(stderr,
             "Usage: %s [--demo|--netlink] [--router-id ID] [--update]\n"
+            "          [--wifi-if IFACE] [--wifi-interval-ms N]\n"
             "  --demo        synthetic frames to stdout (default)\n"
             "  --netlink     live NETLINK_NETFILTER conntrack events\n"
             "  --router-id   CPE identifier string (default cpe-demo-001)\n"
-            "  --update      also join NFNLGRP_CONNTRACK_UPDATE\n",
+            "  --update      also join NFNLGRP_CONNTRACK_UPDATE\n"
+            "  --wifi-if     periodic nl80211 station dump on IFACE\n"
+            "  --wifi-interval-ms  dump period (default 5000)\n",
             argv0);
 }
 
 int main(int argc, char **argv)
 {
     const char *router_id = "cpe-demo-001";
+    const char *wifi_if = NULL;
     int mode_netlink = 0;
     int join_update = 0;
+    int wifi_interval_ms = 5000;
     int i;
 
     for (i = 1; i < argc; i++) {
@@ -277,13 +426,21 @@ int main(int argc, char **argv)
             router_id = argv[++i];
             continue;
         }
+        if (strcmp(argv[i], "--wifi-if") == 0 && i + 1 < argc) {
+            wifi_if = argv[++i];
+            continue;
+        }
+        if (strcmp(argv[i], "--wifi-interval-ms") == 0 && i + 1 < argc) {
+            wifi_interval_ms = atoi(argv[++i]);
+            continue;
+        }
         fprintf(stderr, "unknown arg: %s\n", argv[i]);
         usage(argv[0]);
         return 2;
     }
 
     if (mode_netlink) {
-        return run_netlink(router_id, join_update);
+        return run_netlink(router_id, join_update, wifi_if, wifi_interval_ms);
     }
     return run_demo(router_id);
 }

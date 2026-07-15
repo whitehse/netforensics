@@ -21,10 +21,10 @@ Further work to explore. Ordered by module.
 - [x] Full CTA attribute decode in libnetdiag — live events yield LAN/WAN 5-tuples when present
 - [x] NDJSON fields: event, ip_version, ct_id; IPv6 + DESTROY-id observations
 - [x] IPv6 path correlation in nf_flows_correlate
-- [ ] Periodic nl80211 station dump via generic netlink
+- [x] Periodic nl80211 station dump via generic netlink (`--wifi-if`, `--wifi-interval-ms`)
 - [x] Full nl80211 nested STA_INFO attr decode (libnetdiag)
 - [x] Output: stdout NDJSON (`cpe_nat`, structured `cpe_wifi`) for Vector/journald
-- [ ] OpenWrt package Makefile / cross-compile notes
+- [x] OpenWrt package Makefile / cross-compile notes (`openwrt/`)
 - [ ] Resource limits for MIPS/ARM (fixed buffers, no heap on event path)
 - [x] systemd unit with `AmbientCapabilities=CAP_NET_ADMIN` (`deploy/forensicsd.service`)
 
@@ -46,7 +46,7 @@ Further work to explore. Ordered by module.
 ## MODULE 4 — Queries
 
 - [x] Stub SQL for outbound, inbound, blast radius
-- [x] Validate join keys against synthetic fixtures (host_pipeline SQL shapes)
+- [x] Validate join keys against synthetic fixtures (host_pipeline + sql_fixtures)
 - [ ] Parameterize router_id / time window helpers
 - [ ] Grafana / notebook examples
 
@@ -60,5 +60,5 @@ Further work to explore. Ordered by module.
 ## Library follow-ups
 
 - [ ] libipfix exporter path if CPE ever emits IPFIX instead of JSON
-- [x] libnetdiag full nfct + nl80211 STA_INFO decoders (remaining: live gnl dump in daemon)
-- [ ] New sibling: libbgp/libbmp for BGP Monitoring Protocol PDUs?
+- [x] libnetdiag full nfct + nl80211 STA_INFO decoders + live gnl dump in daemon
+- [x] New sibling: libbmp (BMP common/peer headers; BGP UPDATE still open)
