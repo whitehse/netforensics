@@ -19,28 +19,38 @@ typedef struct {
     uint16_t src_port;
     uint16_t dst_port;
     uint8_t  protocol;
-    uint32_t wan_src_ip;   /* CPE NAT only */
+    uint32_t wan_src_ip;   /* CPE NAT only (IPv4) */
     uint16_t wan_src_port;
+    /* IPv6 (when is_ipv6) */
+    uint8_t  src_ip6[NFCT_IPV6_LEN];
+    uint8_t  dst_ip6[NFCT_IPV6_LEN];
+    uint8_t  wan_src_ip6[NFCT_IPV6_LEN];
+    uint8_t  wan_dst_ip6[NFCT_IPV6_LEN];
     char     router_id[64];
     int      from_cpe;     /* 1 = NAT record, 0 = core IPFIX */
+    int      is_ipv6;
+    int      is_destroy;   /* CPE DESTROY */
+    int      has_ct_id;
+    uint32_t ct_id;        /* CTA_ID when present */
+    char     event[16];    /* NEW / UPDATE / DESTROY / "" */
 } nf_flow_obs_t;
 
 /** Fill observation from IPFIX data record + optional router_id. */
 int nf_obs_from_ipfix(const ipfix_data_record_t *rec, const char *router_id,
                       uint64_t fallback_ts_ms, nf_flow_obs_t *out);
 
-/** Fill observation from nfct forensics tuple. */
+/** Fill observation from nfct event (IPv4, IPv6, or DESTROY-id). */
 int nf_obs_from_nfct(const nfct_event_t *ev, const char *router_id,
                      uint64_t ts_ms, nf_flow_obs_t *out);
 
 /**
- * Match CPE NAT obs to core IPFIX obs on WAN 5-tuple window.
+ * Match CPE NAT obs to core IPFIX obs on WAN 5-tuple window (IPv4).
  * Returns 1 if match, 0 if not, negative on error.
  */
 int nf_flows_correlate(const nf_flow_obs_t *cpe, const nf_flow_obs_t *core,
                        uint64_t max_skew_ms);
 
-/** Format observation one-line for NDJSON emitters / logs. */
+/** Format observation as NDJSON line for Vector / ClickHouse ingest. */
 int nf_obs_format(const nf_flow_obs_t *obs, char *buf, size_t buflen);
 
 /**

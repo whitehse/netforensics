@@ -8,8 +8,8 @@
  *   --netlink  subscribe to NETLINK_NETFILTER conntrack NEW/DESTROY
  *              and emit NDJSON for each decoded event (needs CAP_NET_ADMIN)
  *
- * Real CTA attribute decode is iterative in libnetdiag; raw nlmsg frames
- * still produce PARTIAL/typed events via nfct_feed_input.
+ * CTA decode (IPv4/IPv6 + DESTROY id) is in libnetdiag nfct; NDJSON includes
+ * event, ip_version, ct_id when available.
  */
 
 #include "netforensics.h"
@@ -61,7 +61,7 @@ static void emit_nfct_events(nfct_ctx *nfct, const char *router_id, uint64_t ts)
 {
     nfct_event_t nev;
     nf_flow_obs_t obs;
-    char line[512];
+    char line[768];
     char detail[256];
 
     while (nfct_next_event(nfct, &nev) == 1) {
@@ -72,9 +72,17 @@ static void emit_nfct_events(nfct_ctx *nfct, const char *router_id, uint64_t ts)
         } else {
             /* Partial / incomplete CTA decode — still log for pipeline debug */
             nfct_event_to_string(&nev, detail, sizeof(detail));
-            printf("{\"type\":\"cpe_nat_raw\",\"router\":\"%s\",\"ts\":%llu,"
-                   "\"detail\":\"%s\"}\n",
-                   router_id, (unsigned long long)ts, detail);
+            if (nev.has_id) {
+                printf("{\"type\":\"cpe_nat_raw\",\"router\":\"%s\",\"ts\":%llu,"
+                       "\"event\":\"%s\",\"ct_id\":%u,\"detail\":\"%s\"}\n",
+                       router_id, (unsigned long long)ts,
+                       nev.is_destroy ? "DESTROY" : "PARTIAL",
+                       (unsigned)nev.id, detail);
+            } else {
+                printf("{\"type\":\"cpe_nat_raw\",\"router\":\"%s\",\"ts\":%llu,"
+                       "\"detail\":\"%s\"}\n",
+                       router_id, (unsigned long long)ts, detail);
+            }
         }
         fflush(stdout);
     }

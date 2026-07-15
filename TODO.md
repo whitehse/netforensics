@@ -19,6 +19,7 @@ Further work to explore. Ordered by module.
 - [x] Real `AF_NETLINK` / `NETLINK_NETFILTER` + `NETLINK_ADD_MEMBERSHIP` for NEW/DESTROY (`--netlink`)
 - [x] `nfct_netlink` helper (open/recv/nonblock) in app, feed into libnetdiag `nfct`
 - [x] Full CTA attribute decode in libnetdiag — live events yield LAN/WAN 5-tuples when present
+- [x] NDJSON fields: event, ip_version, ct_id; IPv6 + DESTROY-id observations
 - [ ] Periodic nl80211 station dump via generic netlink
 - [ ] Full nl80211 attr decode (libnetdiag)
 - [ ] Output: stdout NDJSON and/or Unix datagram to Vector agent

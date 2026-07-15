@@ -112,6 +112,45 @@ int main(void)
 
     assert(nf_obs_format(&cpe, line, sizeof(line)) == 0);
     assert(strstr(line, "cpe_nat") != NULL);
+    assert(strstr(line, "ip_version") != NULL || strstr(line, "event") != NULL);
+
+    /* DESTROY id-only NDJSON */
+    {
+        nfct_event_t dev;
+        nf_flow_obs_t dobs;
+        memset(&dev, 0, sizeof(dev));
+        dev.type = NFCT_EVENT_DESTROY;
+        dev.is_destroy = 1;
+        dev.has_id = 1;
+        dev.id = 42;
+        assert(nf_obs_from_nfct(&dev, "cpe-x", 1, &dobs) == 0);
+        assert(nf_obs_format(&dobs, line, sizeof(line)) == 0);
+        assert(strstr(line, "DESTROY") != NULL);
+        assert(strstr(line, "ct_id") != NULL);
+        assert(strstr(line, "42") != NULL);
+    }
+
+    /* IPv6 NAT NDJSON */
+    {
+        nfct_event_t v6;
+        nf_flow_obs_t vobs;
+        int i;
+        memset(&v6, 0, sizeof(v6));
+        v6.type = NFCT_EVENT_NEW;
+        v6.is_ipv6 = 1;
+        v6.has_lan = v6.has_wan = 1;
+        v6.protocol = 17;
+        v6.lan_src_port = 1111;
+        v6.wan_src_port = 2222;
+        for (i = 0; i < 16; i++) {
+            v6.lan_src_ip6[i] = (uint8_t)i;
+            v6.wan_src_ip6[i] = (uint8_t)(0xf0 + (i & 0xf));
+        }
+        assert(nf_obs_from_nfct(&v6, "cpe-v6", 2, &vobs) == 0);
+        assert(vobs.is_ipv6);
+        assert(nf_obs_format(&vobs, line, sizeof(line)) == 0);
+        assert(strstr(line, "ip_version\":6") != NULL);
+    }
 
     printf("correlate test PASSED\n");
     ipfix_destroy(ctx);
