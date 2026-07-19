@@ -52,12 +52,27 @@ transforms:
     route:
       nat: '.type == "cpe_nat"'
       wifi: '.type == "cpe_wifi"'
+      # Track 2 / N-A05: CPE agent performance samples
+      perf: '.type == "cpe_perf"'
 
   batch_guard:
     type: remap
-    inputs: [cpe_route.nat, cpe_route.wifi, bmp_ndjson, bgp_kafka]
+    inputs: [cpe_route.nat, cpe_route.wifi, cpe_route.perf, bmp_ndjson, bgp_kafka]
     source: |
       .ingested_at = now()
+
+  # Map cpe_perf NDJSON fields to forensics.cpe_perf_samples columns
+  cpe_perf_to_ch:
+    type: remap
+    inputs: [cpe_route.perf]
+    source: |
+      .router_id = .router_id
+      .ts = .ts
+      .probe = .probe
+      .target = .target
+      .rtt_ms = to_float!(.rtt_ms)
+      .loss = to_float!(.loss)
+      .meta = encode_json(.meta) ?? "{}"
 
 sinks:
   clickhouse_nat:
@@ -85,6 +100,18 @@ sinks:
     batch:
       max_events: 2000
       timeout_secs: 1
+
+  clickhouse_cpe_perf:
+    type: clickhouse
+    inputs: [cpe_perf_to_ch]
+    endpoint: "http://clickhouse:8123"
+    database: forensics
+    table: cpe_perf_samples
+    compression: gzip
+    batch:
+      max_events: 2000
+      timeout_secs: 1
+    skip_unknown_fields: true
 
   clickhouse_bgp:
     type: clickhouse

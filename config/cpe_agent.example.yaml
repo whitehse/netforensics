@@ -1,0 +1,16 @@
+# CPE agent example config (Track 2).
+# Load at start; SIGHUP sets a reload flag (shadow apply via --config path).
+
+router_id: cpe-lab-1
+
+emit:
+  mode: stdout          # stdout | spool
+  # path: /var/spool/cpe_agent/perf.ndjson
+
+spool:
+  max_lines: 256
+
+demo:
+  enabled: true         # synthetic ping via libnetdiag (no CAP_NET_ADMIN)
+  target: "1.1.1.1"
+  interval_ms: 5000
