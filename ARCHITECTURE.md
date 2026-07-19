@@ -96,9 +96,18 @@ client on CPE (ADR-002 / N-A05).
 - **Wi-Fi**: `(timestamp, client_mac)` / LAN IP join
 - **Perf**: `(router_id, probe, ts)` in `cpe_perf_samples`
 
+## Track 2 extensions (P2.6–P2.9)
+
+| Item | API / path |
+|------|------------|
+| Local latency tool | `cpe_agent_get_local_latency_json` + `cpe_harness_register_tools` |
+| Fuzz (no libsim) | `cpe_agent_fuzz_config_and_ndjson` / `fuzz/fuzz_cpe_agent.c` |
+| Optional sim | `cpe_agent_sim_drive` (sim_clock + sim_timer; no uring) |
+| nfct reuse | `cpe_agent_feed_nfct` → spool `cpe_nat` lines |
+| OpenWrt | `openwrt/cpe-agent/` + `openwrt/OPKG_ROLLBACK.md` |
+
 ## Deliberate absences
 
 - ClickHouse not required for unit/host tests
 - Full live ICMP raw socket in agent v1 (demo uses synthetic feed)
-- libharness tools (P2.6)
-- OpenWrt package for agent (P2.9)
+- Live CAP_NET_ADMIN netlink inside cpe_agent (forensicsd owns that path; agent can feed bytes)

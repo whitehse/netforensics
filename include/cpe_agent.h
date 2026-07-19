@@ -82,12 +82,32 @@ int cpe_agent_provide_buffer(cpe_agent_t *a, uint32_t slot, void *ptr,
  */
 int cpe_agent_demo_ping_tick(cpe_agent_t *a);
 
-/** Copy last sample (for libharness get_local_latency later). */
+/** Copy last sample (for libharness get_local_latency). */
 int cpe_agent_last_sample(const cpe_agent_t *a, cpe_perf_sample_t *out);
+
+/**
+ * Local tool result JSON for get_local_latency (P2.6).
+ * When no sample yet: {"available":false}.
+ * Otherwise includes rtt_ms, loss, probe, target, ts, router_id.
+ * @return bytes written (excl NUL), or -1.
+ */
+int cpe_agent_get_local_latency_json(const cpe_agent_t *a, char *buf,
+                                     size_t buflen);
 
 /** Format one cpe_perf NDJSON line (no trailing newline required in out). */
 int cpe_perf_format_ndjson(const char *router_id, const cpe_perf_sample_t *s,
                            char *buf, size_t buflen);
+
+/**
+ * Feed conntrack bytes into in-agent nfct parser (P2.8).
+ * Reuses libnetdiag nfct + netforensics obs format; puts cpe_nat lines on spool.
+ * @return number of NDJSON lines enqueued, or -1 on error.
+ */
+int cpe_agent_feed_nfct(cpe_agent_t *a, const uint8_t *data, size_t len,
+                        uint64_t ts_ms);
+
+/** Count of successful nfct observations since create. */
+uint64_t cpe_agent_nfct_obs_count(const cpe_agent_t *a);
 
 /** Spool: push a complete NDJSON line (without requiring trailing \\n). */
 int    cpe_agent_spool_push_line(cpe_agent_t *a, const char *line);

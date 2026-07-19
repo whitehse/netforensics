@@ -3,27 +3,45 @@
 ## Layout
 
 ```
-openwrt/netforensics/
-  Makefile              # package definition (skeleton)
-  files/
-    99-forensics.conf   # symlink or copy from cpe/sysctl/
-    forensicsd.init     # procd init
+openwrt/
+  OPKG_ROLLBACK.md           # P2.9 rollback procedure
+  netforensics/              # forensicsd (conntrack / wifi)
+    Makefile
+    files/
+      99-forensics.conf
+      forensicsd.init
+  cpe-agent/                 # cpe_agent (perf NDJSON; Track 2)
+    Makefile
+    files/
+      cpe_agent.yaml
+      cpe_agent.init
 ```
+
+## Packages
+
+| Package | Binary | Caps | Output |
+|---------|--------|------|--------|
+| `netforensics-cpe` | `forensicsd` | CAP_NET_ADMIN (netlink) | `cpe_nat`, `cpe_wifi` |
+| `cpe-agent` | `cpe_agent` | none for demo mode | `cpe_perf` |
+
+Both may be installed on the same CPE. See [OPKG_ROLLBACK.md](OPKG_ROLLBACK.md).
 
 ## Cross-compile tips
 
-1. **Static deps**: copy `libnetdiag` `nfct.c` + `nl80211_parse.c` (+ headers)
-   into the package `deps/` so the CPE image does not need a shared lib.
+1. **Static deps**: vendor `libnetdiag` / `libyaml` sources into package `deps/`
+   so the image does not need shared sibling libs.
 2. **Flags**: `-Os -ffunction-sections -fdata-sections` and link with
    `-Wl,--gc-sections` for MIPS/ARM flash budgets.
-3. **Capabilities**: OpenWrt procd can grant `CAP_NET_ADMIN` via
-   `procd_set_param capabilities` or run as root on small CPE.
-4. **Vector agent**: point a local Vector (or syslog) at forensicsd stdout.
+3. **libuv**: declare `DEPENDS:=+libuv` for `cpe-agent`.
+4. **Capabilities**: procd can grant `CAP_NET_ADMIN` for forensicsd only.
+5. **Vector agent**: point local Vector (or syslog) at daemon stdout.
 
 ## Host build check
 
 ```bash
 cmake -B build -S ../..
-cmake --build build --target forensicsd
+cmake --build build
+ctest --test-dir build --output-on-failure
 ./build/forensicsd --demo --router-id lab-1
+./build/cpe_agent --once --router-id lab-1
 ```

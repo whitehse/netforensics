@@ -29,7 +29,7 @@ Product CPE agent (libuv). Co-exists with forensicsd; does **not** replace it.
 - Output: NDJSON `type=cpe_perf` on stdout (or spool when configured)
 - Schema: `sql/003_cpe_perf_samples.sql` → `forensics.cpe_perf_samples`
 - Vector: `vector/vector.yaml` route `perf` → ClickHouse table above
-- OpenWrt package for agent: P2.9 (not yet)
+- OpenWrt: `openwrt/cpe-agent/` + [OPKG_ROLLBACK.md](../openwrt/OPKG_ROLLBACK.md)
 
 ## Vector fan-in
 

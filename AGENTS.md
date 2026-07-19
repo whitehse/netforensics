@@ -48,6 +48,7 @@ ctest --test-dir build --output-on-failure
 - **Must** emit CPE performance as **NDJSON** `type=cpe_perf` → Vector → `forensics.cpe_perf_samples` (N-A05 / ADR-005). **No** production ClickHouse client on CPE.
 - **Must** use **libuv** for the agent loop (class B); not io_uring on OpenWrt baseline.
 - **Prefer** mbedTLS if/when agent TLS is needed (ADR-004); edgehost uses OpenSSL separately.
+- **Local tool**: `get_local_latency` via libharness registration + `cpe_harness_invoke_local` (P2.6).
 - **Never** allocate on forensicsd hot path after startup (fixed buffers).
 
 ## Definition of done
@@ -71,4 +72,5 @@ ctest --test-dir build --output-on-failure
 
 ## Track 2 status
 
-**P2.1–P2.5 complete.** Next: P2.6 libharness local tool, P2.7 fuzz, P2.9 OpenWrt package.
+**Track 2 complete (P2.1–P2.9):** harness `get_local_latency`, fuzz stubs,
+optional libsim drive, nfct reuse, OpenWrt `cpe-agent` package + opkg rollback.

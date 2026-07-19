@@ -7,6 +7,8 @@
 #include "cpe_host_alloc.h"
 
 #include "netdiag.h"
+#include "netforensics.h"
+#include "nfct.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,6 +45,8 @@ struct cpe_agent {
     size_t spool_drops;
 
     ping_ctx     *ping;
+    nfct_ctx     *nfct; /* optional path reuse (P2.8) */
+    uint64_t      nfct_obs;
     cpe_buf_slot_t slots[CPE_NEED_SLOTS];
 };
 
@@ -129,7 +133,14 @@ cpe_agent_t *cpe_agent_create(void)
         free(a);
         return NULL;
     }
+    a->nfct = nfct_create(NFCT_ROLE_COLLECTOR);
+    if (!a->nfct) {
+        ping_destroy(a->ping);
+        free(a);
+        return NULL;
+    }
     if (ensure_spool(a, a->cfg.spool_max_lines) != 0) {
+        nfct_destroy(a->nfct);
         ping_destroy(a->ping);
         free(a);
         return NULL;
@@ -143,6 +154,9 @@ void cpe_agent_destroy(cpe_agent_t *a)
         return;
     }
     free_spool(a);
+    if (a->nfct) {
+        nfct_destroy(a->nfct);
+    }
     if (a->ping) {
         ping_destroy(a->ping);
     }
@@ -341,6 +355,66 @@ int cpe_agent_last_sample(const cpe_agent_t *a, cpe_perf_sample_t *out)
     }
     *out = a->last;
     return 0;
+}
+
+int cpe_agent_get_local_latency_json(const cpe_agent_t *a, char *buf,
+                                     size_t buflen)
+{
+    int n;
+    const cpe_perf_sample_t *s;
+
+    if (!a || !buf || buflen < 16) {
+        return -1;
+    }
+    if (!a->has_last) {
+        n = snprintf(buf, buflen, "{\"available\":false}");
+        if (n < 0 || (size_t)n >= buflen) {
+            return -1;
+        }
+        return n;
+    }
+    s = &a->last;
+    n = snprintf(buf, buflen,
+                 "{\"available\":true,\"router_id\":\"%s\",\"probe\":\"%s\","
+                 "\"target\":\"%s\",\"rtt_ms\":%.3f,\"loss\":%.4f,\"ts\":\"%s\"}",
+                 a->cfg.router_id[0] ? a->cfg.router_id : "unknown", s->probe,
+                 s->target, s->rtt_ms, (double)s->loss, s->ts_iso);
+    if (n < 0 || (size_t)n >= buflen) {
+        return -1;
+    }
+    return n;
+}
+
+int cpe_agent_feed_nfct(cpe_agent_t *a, const uint8_t *data, size_t len,
+                        uint64_t ts_ms)
+{
+    nfct_event_t nev;
+    nf_flow_obs_t obs;
+    char line[CPE_NDJSON_LINE_MAX];
+    int count = 0;
+
+    if (!a || !a->nfct || !data || len == 0) {
+        return -1;
+    }
+    if (nfct_feed_input(a->nfct, data, len) != 0) {
+        /* parser may still yield partial events */
+    }
+    while (nfct_next_event(a->nfct, &nev) == 1) {
+        if (nf_obs_from_nfct(&nev, a->cfg.router_id, ts_ms, &obs) == 0) {
+            if (nf_obs_format(&obs, line, sizeof(line)) == 0) {
+                if (cpe_agent_spool_push_line(a, line) == 0) {
+                    count++;
+                    a->nfct_obs++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+uint64_t cpe_agent_nfct_obs_count(const cpe_agent_t *a)
+{
+    return a ? a->nfct_obs : 0;
 }
 
 int cpe_agent_spool_push_line(cpe_agent_t *a, const char *line)

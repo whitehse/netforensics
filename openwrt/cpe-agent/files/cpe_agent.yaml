@@ -1,0 +1,16 @@
+# Field-oriented defaults (OpenWrt). Override router_id via --router-id in init.
+
+router_id: cpe
+
+emit:
+  mode: stdout
+
+spool:
+  max_lines: 128
+
+demo:
+  # On field images prefer false once live probes land; true = synthetic ping
+  # via libnetdiag (no CAP_NET_ADMIN).
+  enabled: true
+  target: "1.1.1.1"
+  interval_ms: 60000
