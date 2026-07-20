@@ -1,14 +1,15 @@
-# CPE agent example config (Track 2).
-# Load at start; SIGHUP sets a reload flag (shadow apply via --config path).
+# CPE agent example config (Track 2 + field path).
+# Load at start; SIGHUP re-reads this file (CLI --router-id override preserved).
 
 router_id: cpe-lab-1
 
 emit:
   mode: stdout          # stdout | spool
-  # path: /var/spool/cpe_agent/perf.ndjson
+  # path: /var/spool/cpe_agent/perf.ndjson   # required when mode=spool
 
 spool:
   max_lines: 256
+  # path: /var/spool/cpe_agent/perf.ndjson   # alias for emit.path
 
 demo:
   enabled: true         # synthetic ping via libnetdiag (no CAP_NET_ADMIN)

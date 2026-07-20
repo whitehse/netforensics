@@ -80,13 +80,15 @@ tests/
 Agent and forensicsd may co-exist; share Vector fan-in. No production ClickHouse
 client on CPE (ADR-002 / N-A05).
 
-## Agent control plane (Track 2)
+## Agent control plane (Track 2 + field path)
 
-1. Load YAML → `cpe_agent_config_t` (defaults if no file).
+1. Load YAML → `cpe_agent_config_t` via `cpe_agent_reload_config` (defaults if no file).
 2. `cpe_agent_apply_config` → `CONFIG_APPLIED` / `CONFIG_REJECTED`.
 3. libuv timer → `cpe_agent_demo_ping_tick` (synthetic ICMP into libnetdiag).
-4. Format `cpe_perf` → bounded spool → flush stdout (or spool file later).
-5. SIGHUP sets reload flag (`cpe_agent_hup_take`).
+4. Format `cpe_perf` → bounded ring → `cpe_agent_emit_flush`
+   (`stdout` or append to `emit.path` when `emit.mode=spool`).
+5. SIGHUP → re-read YAML path + re-apply CLI `router_id` override; re-arm timer
+   if `interval_ms` changed (ADR-007).
 
 ## Correlation keys
 

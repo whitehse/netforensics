@@ -15,6 +15,15 @@
 
 **Track 2 complete.**
 
+## Field path (post–Track 2, OpenWrt ops)
+
+- [x] **F1** `emit.mode=spool` append flush (`cpe_agent_emit_flush`) + path validation
+- [x] **F2** SIGHUP YAML shadow reload (`cpe_agent_reload_config`) + CLI router override
+- [x] **F3** libuv timer re-arm after interval change; init/docs ADR-007
+- [ ] **F4** Live ICMP probe path (CAP_NET_RAW / raw socket) behind `demo.enabled: false`
+- [ ] **F5** Optional mbedTLS mTLS egress to gateway (ADR-004; not required for Vector-local)
+- [ ] **F6** Shared spool dir helper with forensicsd; dual-daemon resource caps (MIPS/ARM)
+
 ```bash
 cmake -B build -S .
 cmake --build build && ctest --test-dir build --output-on-failure

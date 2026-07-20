@@ -22,9 +22,13 @@ openwrt/
 | Package | Binary | Caps | Output |
 |---------|--------|------|--------|
 | `netforensics-cpe` | `forensicsd` | CAP_NET_ADMIN (netlink) | `cpe_nat`, `cpe_wifi` |
-| `cpe-agent` | `cpe_agent` | none for demo mode | `cpe_perf` |
+| `cpe-agent` | `cpe_agent` | none for demo mode | `cpe_perf` (stdout or spool file) |
 
 Both may be installed on the same CPE. See [OPKG_ROLLBACK.md](OPKG_ROLLBACK.md).
+
+**cpe-agent field notes:** `emit.mode=spool` + `emit.path` appends NDJSON for
+local Vector file sources. `service cpe_agent reload` sends SIGHUP and re-reads
+`/etc/cpe_agent/cpe_agent.yaml` (CLI `--router-id` override is preserved).
 
 ## Cross-compile tips
 

@@ -121,15 +121,43 @@ size_t cpe_agent_spool_drops(const cpe_agent_t *a);
 int cpe_agent_spool_flush(cpe_agent_t *a, FILE *fp);
 
 /**
- * libuv host entry (P2.2). Blocks until stop signal or max_ticks.
- * @p max_ticks 0 = run until signal; >0 = emit that many demo samples then exit.
+ * Flush spool according to config emit.mode:
+ *   - "stdout" → stdout
+ *   - "spool"  → append open of emit.path / spool.path
+ * @return lines written, or -1 on I/O error.
+ */
+int cpe_agent_emit_flush(cpe_agent_t *a);
+
+/**
+ * Host options for the libuv loop (field OpenWrt path).
+ * All pointers may be NULL; strings are not retained beyond the call
+ * (HUP reload re-reads @p config_path from disk each time).
+ */
+typedef struct {
+    unsigned    max_ticks;          /**< 0 = run until signal */
+    const char *config_path;        /**< YAML path for SIGHUP shadow reload */
+    const char *router_id_override; /**< re-applied after each HUP load */
+} cpe_agent_run_opts_t;
+
+/**
+ * libuv host entry (P2.2 + field HUP/spool). Blocks until stop or max_ticks.
+ * @p opts may be NULL (equivalent to {0, NULL, NULL}).
  * @return 0 ok, non-zero on fatal setup error.
  */
-int cpe_agent_run_uv(cpe_agent_t *a, unsigned max_ticks);
+int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts);
 
 /** SIGHUP flag helpers (host). */
 void cpe_agent_hup_install(void);
 int  cpe_agent_hup_take(void); /* 1 if HUP seen since last take */
+
+/**
+ * Load YAML from @p path (optional), apply router override (optional),
+ * call apply_config. Used by main and SIGHUP shadow reload.
+ * @return 0 ok, -1 on load/validate/apply failure (events may be queued).
+ */
+int cpe_agent_reload_config(cpe_agent_t *a, const char *config_path,
+                            const char *router_id_override, char *err,
+                            size_t err_len);
 
 #ifdef __cplusplus
 }

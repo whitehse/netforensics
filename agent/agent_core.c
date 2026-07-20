@@ -194,8 +194,12 @@ int cpe_agent_apply_config(cpe_agent_t *a, const cpe_agent_config_t *cfg)
             return -1;
         }
     }
-    a->cfg = shadow;
-    a->cfg.generation++;
+    {
+        uint64_t next_gen = a->cfg.generation + 1;
+
+        a->cfg = shadow;
+        a->cfg.generation = next_gen;
+    }
     (void)eq_push(a, CPE_AGENT_EVENT_CONFIG_APPLIED, "ok", 0, 0);
     return 0;
 }
@@ -471,4 +475,75 @@ int cpe_agent_spool_flush(cpe_agent_t *a, FILE *fp)
         return -1;
     }
     return (int)written;
+}
+
+int cpe_agent_emit_flush(cpe_agent_t *a)
+{
+    FILE *fp;
+    int n;
+
+    if (!a) {
+        return -1;
+    }
+    if (strcmp(a->cfg.emit_mode, "spool") == 0) {
+        if (a->cfg.spool_path[0] == '\0') {
+            return -1;
+        }
+        fp = fopen(a->cfg.spool_path, "a");
+        if (!fp) {
+            return -1;
+        }
+        n = cpe_agent_spool_flush(a, fp);
+        if (fclose(fp) != 0 && n >= 0) {
+            return -1;
+        }
+        return n;
+    }
+    /* default: stdout */
+    return cpe_agent_spool_flush(a, stdout);
+}
+
+int cpe_agent_reload_config(cpe_agent_t *a, const char *config_path,
+                            const char *router_id_override, char *err,
+                            size_t err_len)
+{
+    cpe_agent_config_t cfg;
+
+    if (!a) {
+        if (err && err_len) {
+            snprintf(err, err_len, "null agent");
+        }
+        return -1;
+    }
+
+    cpe_agent_config_defaults(&cfg);
+    if (config_path && config_path[0]) {
+        if (cpe_agent_config_load_yaml_path(config_path, &cfg, err, err_len) !=
+            0) {
+            return -1;
+        }
+    } else {
+        /* Keep current settings except generation when no path. */
+        cfg = a->cfg;
+        cfg.generation = 0;
+    }
+
+    if (router_id_override && router_id_override[0]) {
+        if (strlen(router_id_override) >= sizeof(cfg.router_id)) {
+            if (err && err_len) {
+                snprintf(err, err_len, "router_id too long");
+            }
+            return -1;
+        }
+        snprintf(cfg.router_id, sizeof(cfg.router_id), "%s",
+                 router_id_override);
+    }
+
+    if (cpe_agent_apply_config(a, &cfg) != 0) {
+        if (err && err_len && err[0] == '\0') {
+            snprintf(err, err_len, "apply_config rejected");
+        }
+        return -1;
+    }
+    return 0;
 }

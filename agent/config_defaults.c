@@ -47,6 +47,12 @@ int cpe_agent_config_validate(const cpe_agent_config_t *c, char *err,
         }
         return -1;
     }
+    if (strcmp(c->emit_mode, "spool") == 0 && c->spool_path[0] == '\0') {
+        if (err && err_len) {
+            snprintf(err, err_len, "emit.mode=spool requires emit.path");
+        }
+        return -1;
+    }
     if (c->spool_max_lines == 0) {
         if (err && err_len) {
             snprintf(err, err_len, "spool_max_lines must be > 0");

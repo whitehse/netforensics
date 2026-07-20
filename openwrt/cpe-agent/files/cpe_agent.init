@@ -18,6 +18,6 @@ start_service() {
 }
 
 reload_service() {
-	# SIGHUP: reload flag (shadow apply when host implements path reload)
+	# SIGHUP: re-read /etc/cpe_agent/cpe_agent.yaml; --router-id override kept
 	procd_send_signal cpe-agent '*' HUP
 }

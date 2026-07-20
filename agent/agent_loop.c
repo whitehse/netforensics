@@ -1,6 +1,6 @@
 /**
  * @file agent_loop.c
- * @brief libuv host loop + SIGHUP for CPE agent (P2.2).
+ * @brief libuv host loop + SIGHUP reload for CPE agent (P2.2 / field path).
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -63,7 +63,12 @@ typedef struct {
     unsigned     max_ticks;
     unsigned     ticks;
     int          rc;
+    const char  *config_path;
+    const char  *router_override;
+    uint32_t     last_interval_ms;
 } cpe_uv_ctx_t;
+
+static void on_timer(uv_timer_t *t);
 
 static void drain_events(cpe_agent_t *a)
 {
@@ -72,6 +77,49 @@ static void drain_events(cpe_agent_t *a)
     while (cpe_agent_next_event(a, &ev) == 1) {
         (void)ev;
     }
+}
+
+static void rearm_timer(cpe_uv_ctx_t *ctx)
+{
+    const cpe_agent_config_t *cfg;
+    uint64_t interval;
+
+    if (!ctx || !ctx->agent) {
+        return;
+    }
+    cfg = cpe_agent_config(ctx->agent);
+    if (!cfg) {
+        return;
+    }
+    interval = cfg->demo_interval_ms ? cfg->demo_interval_ms : 5000;
+    if (interval == ctx->last_interval_ms) {
+        return;
+    }
+    ctx->last_interval_ms = (uint32_t)interval;
+    (void)uv_timer_stop(&ctx->timer);
+    (void)uv_timer_start(&ctx->timer, on_timer, 0, interval);
+}
+
+static void handle_hup(cpe_uv_ctx_t *ctx)
+{
+    char err[160];
+
+    if (!ctx || !ctx->agent) {
+        return;
+    }
+    if (!cpe_agent_hup_take()) {
+        return;
+    }
+    err[0] = '\0';
+    if (cpe_agent_reload_config(ctx->agent, ctx->config_path,
+                                ctx->router_override, err, sizeof(err)) != 0) {
+        fprintf(stderr, "cpe_agent: HUP reload failed: %s\n",
+                err[0] ? err : "unknown");
+        drain_events(ctx->agent);
+        return;
+    }
+    drain_events(ctx->agent);
+    rearm_timer(ctx);
 }
 
 static void on_timer(uv_timer_t *t)
@@ -86,12 +134,15 @@ static void on_timer(uv_timer_t *t)
         uv_stop(t->loop);
         return;
     }
-    (void)cpe_agent_hup_take();
+
+    handle_hup(ctx);
 
     cfg = cpe_agent_config(ctx->agent);
     if (cfg && cfg->demo_mode) {
         if (cpe_agent_demo_ping_tick(ctx->agent) == 0) {
-            (void)cpe_agent_spool_flush(ctx->agent, stdout);
+            if (cpe_agent_emit_flush(ctx->agent) < 0) {
+                fprintf(stderr, "cpe_agent: emit_flush failed\n");
+            }
         }
         drain_events(ctx->agent);
         ctx->ticks++;
@@ -101,15 +152,20 @@ static void on_timer(uv_timer_t *t)
     }
 }
 
-int cpe_agent_run_uv(cpe_agent_t *a, unsigned max_ticks)
+int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts)
 {
     uv_loop_t *loop;
     cpe_uv_ctx_t ctx;
     const cpe_agent_config_t *cfg;
     uint64_t interval;
+    cpe_agent_run_opts_t local;
 
     if (!a) {
         return 1;
+    }
+    if (!opts) {
+        memset(&local, 0, sizeof(local));
+        opts = &local;
     }
     cfg = cpe_agent_config(a);
     if (!cfg) {
@@ -118,8 +174,11 @@ int cpe_agent_run_uv(cpe_agent_t *a, unsigned max_ticks)
 
     memset(&ctx, 0, sizeof(ctx));
     ctx.agent = a;
-    ctx.max_ticks = max_ticks;
+    ctx.max_ticks = opts->max_ticks;
+    ctx.config_path = opts->config_path;
+    ctx.router_override = opts->router_id_override;
     g_stop = 0;
+    g_hup = 0;
 
     loop = uv_default_loop();
     if (!loop) {
@@ -131,6 +190,7 @@ int cpe_agent_run_uv(cpe_agent_t *a, unsigned max_ticks)
     }
     ctx.timer.data = &ctx;
     interval = cfg->demo_interval_ms ? cfg->demo_interval_ms : 5000;
+    ctx.last_interval_ms = (uint32_t)interval;
     if (uv_timer_start(&ctx.timer, on_timer, 10, interval) != 0) {
         return 1;
     }

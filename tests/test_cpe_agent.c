@@ -5,8 +5,10 @@
 #include "cpe_host_alloc.h"
 
 #include <assert.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -172,6 +174,110 @@ static void test_reject_keeps_generation(void)
     printf("  PASS: reject keeps generation\n");
 }
 
+static void test_spool_mode_requires_path(void)
+{
+    cpe_agent_config_t c;
+    char err[64];
+
+    cpe_agent_config_defaults(&c);
+    snprintf(c.emit_mode, sizeof(c.emit_mode), "spool");
+    c.spool_path[0] = '\0';
+    assert(cpe_agent_config_validate(&c, err, sizeof(err)) == -1);
+    assert(strstr(err, "path") != NULL);
+    printf("  PASS: spool mode requires path\n");
+}
+
+static void test_emit_flush_spool_file(void)
+{
+    cpe_agent_t *a = cpe_agent_create();
+    cpe_agent_config_t cfg;
+    char path[] = "/tmp/cpe_agent_test_spool_XXXXXX";
+    int fd;
+    FILE *fp;
+    char buf[2048];
+    size_t n;
+    cpe_agent_event_t ev;
+
+    assert(a);
+    fd = mkstemp(path);
+    assert(fd >= 0);
+    close(fd);
+
+    cpe_agent_config_defaults(&cfg);
+    snprintf(cfg.emit_mode, sizeof(cfg.emit_mode), "spool");
+    snprintf(cfg.spool_path, sizeof(cfg.spool_path), "%s", path);
+    snprintf(cfg.router_id, sizeof(cfg.router_id), "cpe-spool-1");
+    assert(cpe_agent_apply_config(a, &cfg) == 0);
+    while (cpe_agent_next_event(a, &ev) == 1) {
+    }
+
+    assert(cpe_agent_demo_ping_tick(a) == 0);
+    assert(cpe_agent_emit_flush(a) >= 1);
+    assert(cpe_agent_spool_depth(a) == 0);
+
+    fp = fopen(path, "r");
+    assert(fp);
+    n = fread(buf, 1, sizeof(buf) - 1, fp);
+    buf[n] = '\0';
+    fclose(fp);
+    unlink(path);
+
+    assert(strstr(buf, "\"type\":\"cpe_perf\"") != NULL);
+    assert(strstr(buf, "cpe-spool-1") != NULL);
+
+    cpe_agent_destroy(a);
+    printf("  PASS: emit_flush spool file\n");
+}
+
+static void test_reload_config_override(void)
+{
+    cpe_agent_t *a = cpe_agent_create();
+    char err[128];
+    char yaml_path[] = "/tmp/cpe_agent_reload_XXXXXX";
+    int fd;
+    FILE *fp;
+    const char *yaml =
+        "router_id: from-file\n"
+        "emit:\n"
+        "  mode: stdout\n"
+        "demo:\n"
+        "  enabled: true\n"
+        "  target: \"9.9.9.9\"\n"
+        "  interval_ms: 2000\n";
+    cpe_agent_event_t ev;
+    uint64_t gen1;
+
+    assert(a);
+    fd = mkstemp(yaml_path);
+    assert(fd >= 0);
+    fp = fdopen(fd, "w");
+    assert(fp);
+    fputs(yaml, fp);
+    fclose(fp);
+
+    err[0] = '\0';
+    assert(cpe_agent_reload_config(a, yaml_path, "cli-router", err,
+                                   sizeof(err)) == 0);
+    while (cpe_agent_next_event(a, &ev) == 1) {
+    }
+    assert(strcmp(cpe_agent_config(a)->router_id, "cli-router") == 0);
+    assert(strcmp(cpe_agent_config(a)->demo_target, "9.9.9.9") == 0);
+    assert(cpe_agent_config(a)->demo_interval_ms == 2000);
+    gen1 = cpe_agent_config(a)->generation;
+
+    /* Simulate HUP: reload same file, override still wins. */
+    assert(cpe_agent_reload_config(a, yaml_path, "cli-router", err,
+                                   sizeof(err)) == 0);
+    while (cpe_agent_next_event(a, &ev) == 1) {
+    }
+    assert(strcmp(cpe_agent_config(a)->router_id, "cli-router") == 0);
+    assert(cpe_agent_config(a)->generation == gen1 + 1);
+
+    unlink(yaml_path);
+    cpe_agent_destroy(a);
+    printf("  PASS: reload_config + router override\n");
+}
+
 int main(void)
 {
     printf("cpe_agent:\n");
@@ -182,6 +288,9 @@ int main(void)
     test_host_alloc_stats();
     test_hup_flag();
     test_reject_keeps_generation();
+    test_spool_mode_requires_path();
+    test_emit_flush_spool_file();
+    test_reload_config_override();
     printf("all passed\n");
     return 0;
 }

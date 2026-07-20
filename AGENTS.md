@@ -74,3 +74,6 @@ ctest --test-dir build --output-on-failure
 
 **Track 2 complete (P2.1–P2.9):** harness `get_local_latency`, fuzz stubs,
 optional libsim drive, nfct reuse, OpenWrt `cpe-agent` package + opkg rollback.
+
+**Field path (F1–F3):** `cpe_agent_emit_flush` (spool file), SIGHUP YAML
+reload via `cpe_agent_reload_config`, ADR-007. Next: live ICMP (F4), mTLS (F5).
