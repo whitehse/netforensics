@@ -18,13 +18,16 @@ if(NOT DEFINED BOOTLIN_TOOLCHAIN OR BOOTLIN_TOOLCHAIN STREQUAL "")
     if(DEFINED ENV{BOOTLIN_TOOLCHAIN} AND NOT "$ENV{BOOTLIN_TOOLCHAIN}" STREQUAL "")
         set(BOOTLIN_TOOLCHAIN "$ENV{BOOTLIN_TOOLCHAIN}")
     else()
-        # Field boards are musl — never auto-pick glibc.
+        # Field boards are musl — never auto-pick glibc or .tar.xz archives.
         file(GLOB _bootlin_candidates "$ENV{HOME}/toolchains/aarch64--musl--*")
         list(SORT _bootlin_candidates)
         list(REVERSE _bootlin_candidates)
-        if(_bootlin_candidates)
-            list(GET _bootlin_candidates 0 BOOTLIN_TOOLCHAIN)
-        endif()
+        foreach(_c IN LISTS _bootlin_candidates)
+            if(IS_DIRECTORY "${_c}" AND EXISTS "${_c}/bin")
+                set(BOOTLIN_TOOLCHAIN "${_c}")
+                break()
+            endif()
+        endforeach()
     endif()
 endif()
 
@@ -35,6 +38,11 @@ if(NOT BOOTLIN_TOOLCHAIN OR NOT EXISTS "${BOOTLIN_TOOLCHAIN}")
 endif()
 
 get_filename_component(BOOTLIN_TOOLCHAIN "${BOOTLIN_TOOLCHAIN}" ABSOLUTE)
+if(NOT IS_DIRECTORY "${BOOTLIN_TOOLCHAIN}")
+    message(FATAL_ERROR
+        "BOOTLIN_TOOLCHAIN is not a directory (is a tarball selected?): "
+        "${BOOTLIN_TOOLCHAIN}")
+endif()
 message(STATUS "Bootlin toolchain (musl field): ${BOOTLIN_TOOLCHAIN}")
 if(NOT BOOTLIN_TOOLCHAIN MATCHES "musl")
     message(WARNING
@@ -55,7 +63,6 @@ endif()
 
 set(CMAKE_FIND_ROOT_PATH
     "${BOOTLIN_TOOLCHAIN}/aarch64-buildroot-linux-musl/sysroot"
-    "${BOOTLIN_TOOLCHAIN}/aarch64-buildroot-linux-gnu/sysroot"
     "${BOOTLIN_TOOLCHAIN}")
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)

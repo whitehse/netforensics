@@ -41,7 +41,11 @@ EXPECT_MUSL=1
 
 pick_musl_bootlin() {
   local c
-  if [[ -n "${BOOTLIN_TOOLCHAIN:-}" && -d "${BOOTLIN_TOOLCHAIN}" ]]; then
+  if [[ -n "${BOOTLIN_TOOLCHAIN:-}" ]]; then
+    if [[ ! -d "${BOOTLIN_TOOLCHAIN}" ]]; then
+      echo "error: BOOTLIN_TOOLCHAIN is not a directory: ${BOOTLIN_TOOLCHAIN}" >&2
+      return 1
+    fi
     if [[ "${BOOTLIN_TOOLCHAIN}" == *musl* ]] || [[ "${ALLOW_GLIBC}" -eq 1 ]]; then
       echo "${BOOTLIN_TOOLCHAIN}"
       return 0
@@ -50,9 +54,9 @@ pick_musl_bootlin() {
     echo "  Field boards are musl. Use aarch64--musl--* or pass --allow-glibc." >&2
     return 1
   fi
-  # Prefer musl only
+  # Prefer musl extract dirs only (skip .tar.xz)
   for c in "${HOME}"/toolchains/aarch64--musl--*; do
-    if [[ -d "$c" ]]; then
+    if [[ -d "$c" && -d "$c/bin" ]]; then
       echo "$c"
       return 0
     fi
