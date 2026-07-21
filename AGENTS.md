@@ -78,3 +78,7 @@ optional libsim drive, nfct reuse, OpenWrt `cpe-agent` package + opkg rollback.
 **Field path (F1–F6 complete):** spool emit, HUP reload, live ICMP
 (`demo.enabled: false`), optional mbedTLS HTTPS egress, shared
 `/var/spool/netforensics` caps (ADR-007, ADR-008).
+
+**LXC / prpl (ADR-009):** demo modes run unprivileged; full netlink/Wi‑Fi/live
+ICMP need host netns + CAP_NET_ADMIN/CAP_NET_RAW. Guide:
+`docs/guides/lxc-prpl-containerization.md`.

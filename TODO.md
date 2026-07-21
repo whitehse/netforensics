@@ -81,3 +81,10 @@ cmake -B build -S . -DCPE_AGENT_WITH_MBEDTLS=ON
 - [x] Validate join keys against synthetic fixtures
 - [x] Parameterize router_id / time window helpers (`sql/queries/helpers.sql`)
 - [x] Grafana / notebook examples (`grafana/cpe_perf_dashboard.json`)
+
+## Container / prpl (Calix u6.3 / 7u6 class)
+
+- [x] Document LXC privilege matrix + host netns requirement (ADR-009, guide)
+- [ ] Cross-build with board SDK / OpenWrt SDK (aarch64 or SoC triple)
+- [ ] prpl LCM EE package descriptor (cthulhu-lxc) for Profile A/B
+- [ ] On-device smoke: demo + live netlink inside privileged EE

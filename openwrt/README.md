@@ -49,3 +49,15 @@ ctest --test-dir build --output-on-failure
 ./build/forensicsd --demo --router-id lab-1
 ./build/cpe_agent --once --router-id lab-1
 ```
+
+## LXC / prpl LCM (Calix u6.3 / 7u6 class)
+
+Full live telemetry in a container needs **host network namespace** plus
+`CAP_NET_ADMIN` (forensicsd) and optional `CAP_NET_RAW` (live ICMP). Demo modes
+run unprivileged. See:
+
+- [docs/guides/lxc-prpl-containerization.md](../docs/guides/lxc-prpl-containerization.md)
+- [docs/decisions/009-lxc-prpl-host-privileges.md](../docs/decisions/009-lxc-prpl-host-privileges.md)
+
+Cross-compile for the board ABI; lab x86_64 binaries are not field images.
+
