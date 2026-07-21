@@ -1,0 +1,143 @@
+/**
+ * @file agent_loop_poll.c
+ * @brief Portable host loop without libuv (OpenWrt / aarch64 cross / LXC EE).
+ *
+ * Used when CPE_AGENT_HAVE_LIBUV is not defined. Same HUP/sample/emit behavior
+ * as agent_loop.c (libuv).
+ */
+
+#define _POSIX_C_SOURCE 200809L
+
+#include "cpe_agent.h"
+
+#include <errno.h>
+#include <signal.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+
+static volatile sig_atomic_t g_hup;
+static volatile sig_atomic_t g_stop;
+
+static void hup_handler(int sig)
+{
+    if (sig == SIGHUP) {
+        g_hup = 1;
+    } else {
+        g_stop = 1;
+    }
+}
+
+void cpe_agent_hup_install(void)
+{
+    struct sigaction sa;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = hup_handler;
+    sigemptyset(&sa.sa_mask);
+    (void)sigaction(SIGHUP, &sa, NULL);
+    (void)sigaction(SIGINT, &sa, NULL);
+    (void)sigaction(SIGTERM, &sa, NULL);
+}
+
+int cpe_agent_hup_take(void)
+{
+    if (g_hup) {
+        g_hup = 0;
+        return 1;
+    }
+    return 0;
+}
+
+static void drain_events(cpe_agent_t *a)
+{
+    cpe_agent_event_t ev;
+
+    while (cpe_agent_next_event(a, &ev) == 1) {
+        (void)ev;
+    }
+}
+
+static void handle_hup(cpe_agent_t *a, const char *config_path,
+                       const char *router_override)
+{
+    char err[160];
+
+    if (!cpe_agent_hup_take()) {
+        return;
+    }
+    err[0] = '\0';
+    if (cpe_agent_reload_config(a, config_path, router_override, err,
+                                sizeof(err)) != 0) {
+        fprintf(stderr, "cpe_agent: HUP reload failed: %s\n",
+                err[0] ? err : "unknown");
+        drain_events(a);
+        return;
+    }
+    drain_events(a);
+}
+
+static void msleep(uint32_t ms)
+{
+    struct timespec ts;
+
+    ts.tv_sec = (time_t)(ms / 1000u);
+    ts.tv_nsec = (long)(ms % 1000u) * 1000000L;
+    while (nanosleep(&ts, &ts) != 0 && errno == EINTR) {
+        if (g_stop) {
+            return;
+        }
+    }
+}
+
+int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts)
+{
+    const cpe_agent_config_t *cfg;
+    cpe_agent_run_opts_t local;
+    unsigned ticks = 0;
+    uint32_t interval;
+
+    if (!a) {
+        return 1;
+    }
+    if (!opts) {
+        memset(&local, 0, sizeof(local));
+        opts = &local;
+    }
+    cfg = cpe_agent_config(a);
+    if (!cfg) {
+        return 1;
+    }
+
+    g_stop = 0;
+    g_hup = 0;
+    cpe_agent_hup_install();
+
+    interval = cfg->demo_interval_ms ? cfg->demo_interval_ms : 5000;
+    /* First sample soon after start (mirrors libuv 10 ms first fire). */
+    msleep(10);
+
+    while (!g_stop) {
+        handle_hup(a, opts->config_path, opts->router_id_override);
+        cfg = cpe_agent_config(a);
+        if (cfg) {
+            interval = cfg->demo_interval_ms ? cfg->demo_interval_ms : 5000;
+            if (cpe_agent_sample_tick(a) == 0) {
+                if (cpe_agent_emit_flush(a) < 0) {
+                    fprintf(stderr, "cpe_agent: emit_flush failed\n");
+                }
+            } else {
+                fprintf(stderr, "cpe_agent: sample_tick failed (demo=%d)\n",
+                        cfg->demo_mode);
+            }
+            drain_events(a);
+            ticks++;
+            if (opts->max_ticks > 0 && ticks >= opts->max_ticks) {
+                break;
+            }
+        }
+        msleep(interval);
+    }
+    return 0;
+}

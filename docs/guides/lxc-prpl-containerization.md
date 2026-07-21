@@ -172,11 +172,35 @@ forensicsd --netlink --router-id lab --wifi-if wlan0
 
 ---
 
+## Concrete package templates (in tree)
+
+| Artifact | Path |
+|----------|------|
+| LXC Profile A | `deploy/lxc/netforensics-profile-a.conf` |
+| LXC Profile B | `deploy/lxc/netforensics-profile-b.conf` |
+| prpl LCM manifest | `deploy/prpl-lcm/netforensics-ee/manifest.yaml` |
+| OCI-ish config A/B | `deploy/prpl-lcm/netforensics-ee/container-config-profile-*.json` |
+| EE entrypoint | `deploy/prpl-lcm/netforensics-ee/files/entrypoint.sh` |
+| Stage rootfs | `scripts/stage_lxc_rootfs.sh` |
+
+## aarch64 cross-build path
+
+```bash
+./scripts/fetch_bootlin_aarch64.sh          # musl toolchain → ~/toolchains
+./scripts/cross_build_aarch64.sh            # build-aarch64/{cpe_agent,forensicsd}
+DEST=deploy/prpl-lcm/netforensics-ee/rootfs \
+  ./scripts/stage_lxc_rootfs.sh build-aarch64
+```
+
+CMake toolchains: `cmake/toolchains/aarch64-bootlin.cmake`,
+`aarch64-linux-gnu.cmake`, `openwrt-generic.cmake`. Field profile uses the
+**poll loop** when libuv is not in the sysroot (`agent_loop_poll.c`).
+
 ## Conclusion
 
 1. **Architecture**: already container-ready (demo paths + optional privilege).
 2. **Full forensics in LXC**: supported **if and only if** low-level host networking is exposed (host netns + CAP_NET_ADMIN / CAP_NET_RAW as above).
-3. **Calix u6.3 / 7u6**: expect prpl/EXOS-style LXC LCM; our OpenWrt procd packages are a starting point, not the final LCM DU.
-4. **Next engineering steps**: SoC cross-toolchain build; LCM EE template for Profile A/B; device smoke of the checklist above.
+3. **Calix u6.3 / 7u6**: expect prpl/EXOS-style LXC LCM; package templates ship under `deploy/`.
+4. **Cross-build**: Bootlin aarch64 musl path verified on CI host; swap OpenWrt SDK via `openwrt-generic.cmake` when available.
 
-Related ADRs: [001](../decisions/001-libraries-own-parsing.md), [002](../decisions/002-ndjson-to-vector.md), [004](../decisions/004-cpe-agent-tls-mbedtls.md), [008](../decisions/008-field-live-icmp-mtls-spool.md).
+Related ADRs: [001](../decisions/001-libraries-own-parsing.md), [002](../decisions/002-ndjson-to-vector.md), [004](../decisions/004-cpe-agent-tls-mbedtls.md), [008](../decisions/008-field-live-icmp-mtls-spool.md), [009](../decisions/009-lxc-prpl-host-privileges.md).

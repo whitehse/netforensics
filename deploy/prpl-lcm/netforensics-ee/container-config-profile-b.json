@@ -1,0 +1,49 @@
+{
+  "ociVersion": "1.0.2",
+  "process": {
+    "terminal": false,
+    "user": { "uid": 0, "gid": 0 },
+    "args": ["/usr/sbin/netforensics-entrypoint", "--demo"],
+    "env": [
+      "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+      "ROUTER_ID="
+    ],
+    "cwd": "/",
+    "capabilities": {
+      "bounding": ["CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_SETUID", "CAP_SETGID"],
+      "effective": [],
+      "permitted": ["CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_SETUID", "CAP_SETGID"],
+      "inheritable": []
+    },
+    "noNewPrivileges": true
+  },
+  "root": { "path": "rootfs", "readonly": false },
+  "hostname": "netforensics-demo",
+  "mounts": [
+    {
+      "destination": "/var/spool/netforensics",
+      "type": "bind",
+      "source": "/var/spool/netforensics",
+      "options": ["rbind", "rw", "nosuid", "nodev"]
+    },
+    {
+      "destination": "/proc",
+      "type": "proc",
+      "source": "proc",
+      "options": ["nosuid", "noexec", "nodev"]
+    }
+  ],
+  "linux": {
+    "namespaces": [
+      { "type": "pid" },
+      { "type": "ipc" },
+      { "type": "uts" },
+      { "type": "mount" },
+      { "type": "network" }
+    ],
+    "resources": {
+      "memory": { "limit": 25165824 },
+      "pids": { "limit": 16 }
+    }
+  }
+}

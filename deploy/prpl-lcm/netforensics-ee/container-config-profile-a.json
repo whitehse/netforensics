@@ -1,0 +1,104 @@
+{
+  "ociVersion": "1.0.2",
+  "process": {
+    "terminal": false,
+    "user": { "uid": 0, "gid": 0 },
+    "args": ["/usr/sbin/netforensics-entrypoint"],
+    "env": [
+      "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+      "ROUTER_ID="
+    ],
+    "cwd": "/",
+    "capabilities": {
+      "bounding": [
+        "CAP_NET_ADMIN",
+        "CAP_NET_RAW",
+        "CAP_NET_BIND_SERVICE",
+        "CAP_SETUID",
+        "CAP_SETGID",
+        "CAP_CHOWN",
+        "CAP_DAC_OVERRIDE"
+      ],
+      "effective": [
+        "CAP_NET_ADMIN",
+        "CAP_NET_RAW",
+        "CAP_NET_BIND_SERVICE"
+      ],
+      "permitted": [
+        "CAP_NET_ADMIN",
+        "CAP_NET_RAW",
+        "CAP_NET_BIND_SERVICE",
+        "CAP_SETUID",
+        "CAP_SETGID",
+        "CAP_CHOWN",
+        "CAP_DAC_OVERRIDE"
+      ],
+      "inheritable": [
+        "CAP_NET_ADMIN",
+        "CAP_NET_RAW"
+      ]
+    },
+    "rlimits": [
+      { "type": "RLIMIT_NOFILE", "hard": 256, "soft": 256 },
+      { "type": "RLIMIT_NPROC", "hard": 32, "soft": 32 }
+    ],
+    "noNewPrivileges": true
+  },
+  "root": {
+    "path": "rootfs",
+    "readonly": false
+  },
+  "hostname": "netforensics",
+  "mounts": [
+    {
+      "destination": "/var/spool/netforensics",
+      "type": "bind",
+      "source": "/var/spool/netforensics",
+      "options": ["rbind", "rw", "nosuid", "nodev"]
+    },
+    {
+      "destination": "/proc",
+      "type": "proc",
+      "source": "proc",
+      "options": ["nosuid", "noexec", "nodev"]
+    },
+    {
+      "destination": "/dev",
+      "type": "tmpfs",
+      "source": "tmpfs",
+      "options": ["nosuid", "strictatime", "mode=755", "size=65536k"]
+    }
+  ],
+  "linux": {
+    "namespaces": [
+      { "type": "pid" },
+      { "type": "ipc" },
+      { "type": "uts" },
+      { "type": "mount" }
+    ],
+    "maskedPaths": [
+      "/proc/acpi",
+      "/proc/kcore",
+      "/proc/keys",
+      "/proc/latency_stats",
+      "/proc/timer_list",
+      "/proc/timer_stats",
+      "/proc/sched_debug",
+      "/sys/firmware",
+      "/proc/scsi"
+    ],
+    "readonlyPaths": [
+      "/proc/asound",
+      "/proc/bus",
+      "/proc/fs",
+      "/proc/irq",
+      "/proc/sys",
+      "/proc/sysrq-trigger"
+    ],
+    "resources": {
+      "memory": { "limit": 50331648 },
+      "pids": { "limit": 32 }
+    },
+    "comment": "No network namespace entry = share host net (Profile A). Add {\"type\":\"network\"} for Profile B isolation."
+  }
+}

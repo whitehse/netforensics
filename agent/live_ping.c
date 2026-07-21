@@ -74,8 +74,17 @@ static void iso_now(char *out, size_t n)
         snprintf(out, n, "1970-01-01T00:00:00.000Z");
         return;
     }
-    snprintf(out, n, "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", tm.tm_year + 1900,
-             tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, ms);
+    {
+        int y = tm.tm_year + 1900;
+        if (y < 0) {
+            y = 0;
+        }
+        if (y > 9999) {
+            y = 9999;
+        }
+        snprintf(out, n, "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", y, tm.tm_mon + 1,
+                 tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, ms);
+    }
 }
 
 static int open_icmp_socket(int *is_raw_out)

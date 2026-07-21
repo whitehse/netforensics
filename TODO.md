@@ -85,6 +85,7 @@ cmake -B build -S . -DCPE_AGENT_WITH_MBEDTLS=ON
 ## Container / prpl (Calix u6.3 / 7u6 class)
 
 - [x] Document LXC privilege matrix + host netns requirement (ADR-009, guide)
-- [ ] Cross-build with board SDK / OpenWrt SDK (aarch64 or SoC triple)
-- [ ] prpl LCM EE package descriptor (cthulhu-lxc) for Profile A/B
-- [ ] On-device smoke: demo + live netlink inside privileged EE
+- [x] aarch64 cross-build path (Bootlin musl + CMake toolchains + poll loop)
+- [x] prpl LCM EE package descriptor + LXC Profile A/B configs
+- [ ] On-device smoke: demo + live netlink inside privileged EE (needs hardware)
+- [ ] OpenWrt SDK staging_dir dry-run when vendor SDK available

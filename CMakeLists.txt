@@ -25,10 +25,18 @@ set(YAML_ROOT "${SIBLING_ROOT}/libyaml" CACHE PATH "libyaml root")
 set(HARNESS_ROOT "${SIBLING_ROOT}/libharness" CACHE PATH "libharness root")
 set(LIBSIM_ROOT "${SIBLING_ROOT}/libsim" CACHE PATH "libsim root")
 
+option(CPE_AGENT_FIELD "Field/OpenWrt profile: no harness/sim; libuv optional" OFF)
 option(CPE_AGENT_WITH_HARNESS "Build libharness local tools (P2.6)" ON)
 option(CPE_AGENT_WITH_LIBSIM "Optional libsim class-B drive (P2.7b)" ON)
 option(CPE_AGENT_WITH_MBEDTLS "Optional mbedTLS HTTPS egress (F5)" ON)
+option(CPE_AGENT_WITH_LIBUV "Use libuv host loop (else poll/nanosleep)" ON)
 option(BUILD_FUZZ "Build libFuzzer harness (clang)" OFF)
+
+if(CPE_AGENT_FIELD)
+    set(CPE_AGENT_WITH_HARNESS OFF CACHE BOOL "" FORCE)
+    set(CPE_AGENT_WITH_LIBSIM OFF CACHE BOOL "" FORCE)
+    # Keep mbedTLS optional; do not force OFF (site may enable)
+endif()
 
 if(NOT EXISTS "${IPFIX_ROOT}/include/ipfix.h")
     message(FATAL_ERROR "libipfix not found at ${IPFIX_ROOT}")
@@ -43,21 +51,52 @@ if(NOT EXISTS "${YAML_ROOT}/include/yaml.h")
     message(FATAL_ERROR "libyaml not found at ${YAML_ROOT}")
 endif()
 
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(LIBUV libuv)
-endif()
-if(NOT LIBUV_FOUND)
-    find_path(LIBUV_INCLUDE_DIR uv.h)
-    find_library(LIBUV_LIBRARY uv)
-    if(LIBUV_INCLUDE_DIR AND LIBUV_LIBRARY)
-        set(LIBUV_FOUND TRUE)
-        set(LIBUV_INCLUDE_DIRS ${LIBUV_INCLUDE_DIR})
-        set(LIBUV_LIBRARIES ${LIBUV_LIBRARY})
+set(CPE_HAVE_LIBUV 0)
+if(CPE_AGENT_WITH_LIBUV)
+    # Host pkg-config is wrong when cross-compiling; only use it natively.
+    if(NOT CMAKE_CROSSCOMPILING)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(LIBUV libuv)
+        endif()
     endif()
-endif()
-if(NOT LIBUV_FOUND)
-    message(FATAL_ERROR "libuv required for cpe_agent (install libuv1-dev)")
+    if(NOT LIBUV_FOUND)
+        find_path(LIBUV_INCLUDE_DIR uv.h
+            PATHS ${CMAKE_FIND_ROOT_PATH}
+            PATH_SUFFIXES include
+            NO_CMAKE_FIND_ROOT_PATH)
+        # Retry with root path modes for cross sysroot
+        if(NOT LIBUV_INCLUDE_DIR)
+            find_path(LIBUV_INCLUDE_DIR uv.h)
+        endif()
+        find_library(LIBUV_LIBRARY uv
+            PATHS ${CMAKE_FIND_ROOT_PATH}
+            PATH_SUFFIXES lib lib64
+            NO_DEFAULT_PATH)
+        if(NOT LIBUV_LIBRARY)
+            find_library(LIBUV_LIBRARY uv)
+        endif()
+        if(LIBUV_INCLUDE_DIR AND LIBUV_LIBRARY)
+            # Reject host /usr/lib when cross-compiling
+            if(CMAKE_CROSSCOMPILING AND LIBUV_LIBRARY MATCHES "^/usr/lib")
+                message(STATUS "  libuv       ignoring host ${LIBUV_LIBRARY}")
+                unset(LIBUV_LIBRARY CACHE)
+                unset(LIBUV_INCLUDE_DIR CACHE)
+            else()
+                set(LIBUV_FOUND TRUE)
+                set(LIBUV_INCLUDE_DIRS ${LIBUV_INCLUDE_DIR})
+                set(LIBUV_LIBRARIES ${LIBUV_LIBRARY})
+            endif()
+        endif()
+    endif()
+    if(LIBUV_FOUND)
+        set(CPE_HAVE_LIBUV 1)
+    elseif(CPE_AGENT_FIELD OR CMAKE_CROSSCOMPILING)
+        message(STATUS "  libuv       not found — using poll loop (field/cross)")
+        set(CPE_AGENT_WITH_LIBUV OFF)
+    else()
+        message(FATAL_ERROR "libuv required (install libuv1-dev) or -DCPE_AGENT_FIELD=ON")
+    endif()
 endif()
 
 add_library(ipfix STATIC ${IPFIX_ROOT}/src/ipfix.c)
@@ -152,12 +191,16 @@ set(CPE_AGENT_SOURCES
     agent/config_yaml.c
     agent/perf_sample.c
     agent/agent_core.c
-    agent/agent_loop.c
     agent/agent_fuzz.c
     agent/live_ping.c
     agent/spool_util.c
     agent/tls_egress.c
 )
+if(CPE_HAVE_LIBUV)
+    list(APPEND CPE_AGENT_SOURCES agent/agent_loop.c)
+else()
+    list(APPEND CPE_AGENT_SOURCES agent/agent_loop_poll.c)
+endif()
 if(CPE_HAVE_HARNESS)
     list(APPEND CPE_AGENT_SOURCES agent/harness_driver.c)
 endif()
@@ -168,13 +211,16 @@ endif()
 add_library(cpe_agent_lib STATIC ${CPE_AGENT_SOURCES})
 target_include_directories(cpe_agent_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${LIBUV_INCLUDE_DIRS}
 )
+if(CPE_HAVE_LIBUV)
+    target_include_directories(cpe_agent_lib PUBLIC ${LIBUV_INCLUDE_DIRS})
+    target_link_libraries(cpe_agent_lib PUBLIC ${LIBUV_LIBRARIES})
+    target_compile_definitions(cpe_agent_lib PUBLIC CPE_AGENT_HAVE_LIBUV=1)
+endif()
 target_link_libraries(cpe_agent_lib PUBLIC
     netforensics_core
     netdiag
     yaml_sib
-    ${LIBUV_LIBRARIES}
 )
 target_compile_definitions(cpe_agent_lib PRIVATE _POSIX_C_SOURCE=200809L)
 if(CPE_HAVE_HARNESS)
@@ -258,7 +304,8 @@ message(STATUS "  libipfix   ${IPFIX_ROOT}")
 message(STATUS "  libnetdiag  ${NETDIAG_ROOT}")
 message(STATUS "  libbmp      ${BMP_ROOT}")
 message(STATUS "  libyaml     ${YAML_ROOT}")
-message(STATUS "  libuv       FOUND=${LIBUV_FOUND}")
+message(STATUS "  libuv       ${CPE_HAVE_LIBUV}")
 message(STATUS "  harness     ${CPE_HAVE_HARNESS}")
 message(STATUS "  libsim      ${CPE_HAVE_LIBSIM}")
 message(STATUS "  mbedTLS     ${CPE_HAVE_MBEDTLS}")
+message(STATUS "  field       ${CPE_AGENT_FIELD}")

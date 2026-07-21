@@ -58,6 +58,19 @@ run unprivileged. See:
 
 - [docs/guides/lxc-prpl-containerization.md](../docs/guides/lxc-prpl-containerization.md)
 - [docs/decisions/009-lxc-prpl-host-privileges.md](../docs/decisions/009-lxc-prpl-host-privileges.md)
+- LXC configs: `deploy/lxc/netforensics-profile-{a,b}.conf`
+- prpl EE: `deploy/prpl-lcm/netforensics-ee/`
 
-Cross-compile for the board ABI; lab x86_64 binaries are not field images.
+### aarch64 field cross-build
+
+```bash
+./scripts/fetch_bootlin_aarch64.sh
+./scripts/cross_build_aarch64.sh
+DEST=deploy/prpl-lcm/netforensics-ee/rootfs \
+  ./scripts/stage_lxc_rootfs.sh build-aarch64
+file build-aarch64/cpe_agent   # expect: ARM aarch64, musl
+```
+
+OpenWrt SDK: set `STAGING_DIR` + `TOOLCHAIN_DIR` and use
+`cmake/toolchains/openwrt-generic.cmake`.
 

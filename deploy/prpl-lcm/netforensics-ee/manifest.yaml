@@ -1,0 +1,57 @@
+# prpl LCM / SoftwareModules-oriented package descriptor (Profile A default)
+# Map fields into vendor InstallDU / cthulhu EE as required by your SDK.
+#
+# Package identity
+name: netforensics-ee
+version: "0.3.0"
+vendor: whitehse
+description: >
+  CPE forensics dual-daemon (forensicsd + cpe_agent). NDJSON → Vector/ClickHouse.
+  Profile A: host network + CAP_NET_ADMIN + CAP_NET_RAW for live telemetry.
+
+# Execution environment
+ee:
+  runtime: lxc                    # cthulhu-lxc backend
+  profile: A                      # see deploy/lxc/netforensics-profile-a.conf
+  arch: aarch64
+  memory_max_mb: 48
+  pids_max: 32
+
+# Privilege contract (must be granted by LCM policy)
+privileges:
+  network_namespace: host         # share host net (conntrack + nl80211 + ICMP)
+  capabilities:
+    - CAP_NET_ADMIN               # forensicsd netlink
+    - CAP_NET_RAW                 # cpe_agent live ICMP fallback
+  mounts:
+    - host: /var/spool/netforensics
+      container: /var/spool/netforensics
+      options: [bind, rw, create=dir]
+
+# Host-side (outside EE) requirements
+host_requirements:
+  sysctl_file: etc/netforensics/99-forensics.conf.HOST_APPLY
+  kernel_features:
+    - nf_conntrack
+    - netlink NETLINK_NETFILTER
+    - nl80211 (optional Wi-Fi metrics)
+
+# Processes started by entrypoint
+processes:
+  - name: forensicsd
+    path: /usr/sbin/forensicsd
+    args: ["--netlink", "--router-id", "${ROUTER_ID}", "--wifi-if", "wlan0"]
+  - name: cpe_agent
+    path: /usr/sbin/cpe_agent
+    args: ["--config", "/etc/cpe_agent/cpe_agent.yaml", "--router-id", "${ROUTER_ID}"]
+
+entrypoint: /usr/sbin/netforensics-entrypoint
+
+# Artifact layout after stage_lxc_rootfs.sh
+rootfs: rootfs/
+
+# Rollback / dual-daemon notes
+related:
+  - openwrt/OPKG_ROLLBACK.md
+  - docs/guides/lxc-prpl-containerization.md
+  - docs/decisions/009-lxc-prpl-host-privileges.md
