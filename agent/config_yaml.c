@@ -159,6 +159,41 @@ static int apply_scalar(cpe_agent_config_t *c, const char *key, const char *val,
         c->demo_mode = iv;
         return 0;
     }
+    if (strcmp(key, "demo.timeout_ms") == 0 ||
+        strcmp(key, "probe.timeout_ms") == 0 ||
+        strcmp(key, "probe_timeout_ms") == 0) {
+        if (parse_u32(val, &u32) != 0 || u32 == 0) {
+            FAIL("invalid");
+        }
+        c->probe_timeout_ms = u32;
+        return 0;
+    }
+    if (strcmp(key, "egress.url") == 0 || strcmp(key, "https_url") == 0) {
+        if (copy_str(c->https_url, sizeof(c->https_url), val) != 0) {
+            FAIL("too long");
+        }
+        return 0;
+    }
+    if (strcmp(key, "egress.ca_file") == 0 || strcmp(key, "tls_ca_file") == 0) {
+        if (copy_str(c->tls_ca_file, sizeof(c->tls_ca_file), val) != 0) {
+            FAIL("too long");
+        }
+        return 0;
+    }
+    if (strcmp(key, "egress.cert_file") == 0 ||
+        strcmp(key, "tls_cert_file") == 0) {
+        if (copy_str(c->tls_cert_file, sizeof(c->tls_cert_file), val) != 0) {
+            FAIL("too long");
+        }
+        return 0;
+    }
+    if (strcmp(key, "egress.key_file") == 0 ||
+        strcmp(key, "tls_key_file") == 0) {
+        if (copy_str(c->tls_key_file, sizeof(c->tls_key_file), val) != 0) {
+            FAIL("too long");
+        }
+        return 0;
+    }
 #undef FAIL
     return 0;
 }
@@ -180,6 +215,17 @@ static const char *const g_paths[] = {
     "sample_interval_ms",
     "demo.enabled",
     "demo_mode",
+    "demo.timeout_ms",
+    "probe.timeout_ms",
+    "probe_timeout_ms",
+    "egress.url",
+    "https_url",
+    "egress.ca_file",
+    "tls_ca_file",
+    "egress.cert_file",
+    "tls_cert_file",
+    "egress.key_file",
+    "tls_key_file",
     NULL
 };
 

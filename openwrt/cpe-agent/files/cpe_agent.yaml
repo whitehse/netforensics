@@ -4,13 +4,21 @@ router_id: cpe
 
 emit:
   mode: stdout
+  # mode: spool
+  # path: /var/spool/netforensics/cpe_perf.ndjson
+  # mode: https   # requires mbedTLS build + egress.* (optional F5)
+  # egress:
+  #   url: https://ingest.example/cpe/v1/events
+  #   ca_file: /etc/cpe_agent/ca.crt
+  #   cert_file: /etc/cpe_agent/client.crt
+  #   key_file: /etc/cpe_agent/client.key
 
 spool:
-  max_lines: 128
+  max_lines: 128   # OpenWrt soft cap (hard max 1024)
 
 demo:
-  # On field images prefer false once live probes land; true = synthetic ping
-  # via libnetdiag (no CAP_NET_ADMIN).
+  # false = live ICMP (F4; CAP_NET_RAW if DGRAM ICMP unavailable)
   enabled: true
   target: "1.1.1.1"
   interval_ms: 60000
+  timeout_ms: 1000

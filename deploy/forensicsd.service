@@ -14,6 +14,12 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+# MIPS/ARM / multi-daemon resource caps (MODULE 1 / F6)
+MemoryMax=32M
+TasksMax=16
+LimitNOFILE=256
+# Shared spool dir when not using journal stdout only
+ReadWritePaths=/var/spool/netforensics
 # NDJSON to stdout for Vector / journald
 StandardOutput=journal
 StandardError=journal

@@ -4,11 +4,16 @@
 START=95
 USE_PROCD=1
 
+SPOOL_DIR=/var/spool/netforensics
+
 start_service() {
+	mkdir -p "$SPOOL_DIR"
 	procd_open_instance
 	procd_set_param command /usr/sbin/forensicsd --netlink \
 		--router-id "$(cat /proc/sys/kernel/hostname 2>/dev/null || echo cpe)" \
 		--wifi-if wlan0 --wifi-interval-ms 10000
+	procd_set_param capabilities CAP_NET_ADMIN
+	procd_set_param limits core="0 0"
 	procd_set_param respawn 3600 5 0
 	procd_set_param stdout 1
 	procd_set_param stderr 1

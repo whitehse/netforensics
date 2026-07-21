@@ -4,7 +4,9 @@
  */
 
 #include "cpe_agent.h"
+#include "cpe_agent_tls.h"
 #include "cpe_host_alloc.h"
+#include "cpe_spool.h"
 
 #include "netdiag.h"
 #include "netforensics.h"
@@ -182,6 +184,9 @@ int cpe_agent_apply_config(cpe_agent_t *a, const cpe_agent_config_t *cfg)
     }
     if (shadow.demo_interval_ms == 0) {
         shadow.demo_interval_ms = shadow.sample_interval_ms;
+    }
+    if (shadow.probe_timeout_ms == 0) {
+        shadow.probe_timeout_ms = 1000;
     }
     if (cpe_agent_config_validate(&shadow, err, sizeof(err)) != 0) {
         (void)eq_push(a, CPE_AGENT_EVENT_CONFIG_REJECTED, err, 0, 0);
@@ -361,6 +366,45 @@ int cpe_agent_last_sample(const cpe_agent_t *a, cpe_perf_sample_t *out)
     return 0;
 }
 
+int cpe_agent_set_last_sample(cpe_agent_t *a, const cpe_perf_sample_t *s)
+{
+    if (!a || !s) {
+        return -1;
+    }
+    a->last = *s;
+    a->has_last = 1;
+    (void)eq_push(a, CPE_AGENT_EVENT_SAMPLE_READY, "sample", 0, 0);
+    return 0;
+}
+
+int cpe_agent_feed_icmp_echo_reply(cpe_agent_t *a, const uint8_t *icmp,
+                                   size_t len, uint64_t ts_ms)
+{
+    netdiag_event_t ev;
+
+    if (!a || !a->ping || !icmp || len < 8) {
+        return -1;
+    }
+    if (ping_feed_input_with_ts(a->ping, icmp, len, ts_ms ? ts_ms : 1) != 0) {
+        return -1;
+    }
+    (void)ping_process(a->ping, ts_ms ? ts_ms + 1 : 1);
+    while (ping_next_event(a->ping, &ev) == 1) {
+    }
+    return 0;
+}
+
+int cpe_agent_sample_tick(cpe_agent_t *a)
+{
+    if (!a) {
+        return -1;
+    }
+    if (a->cfg.demo_mode) {
+        return cpe_agent_demo_ping_tick(a);
+    }
+    return cpe_agent_live_ping_tick(a);
+}
+
 int cpe_agent_get_local_latency_json(const cpe_agent_t *a, char *buf,
                                      size_t buflen)
 {
@@ -481,14 +525,52 @@ int cpe_agent_emit_flush(cpe_agent_t *a)
 {
     FILE *fp;
     int n;
+    /* Bounded batch for HTTPS POST — OpenWrt stack budget. */
+    char body[8 * CPE_NDJSON_LINE_MAX];
+    size_t body_len = 0;
+    char err[160];
 
     if (!a) {
         return -1;
+    }
+    if (strcmp(a->cfg.emit_mode, "https") == 0) {
+        /* Drain ring into a single NDJSON body, then POST. */
+        if (a->spool_cnt == 0) {
+            return 0;
+        }
+        body[0] = '\0';
+        n = 0;
+        while (a->spool_cnt > 0 && body_len + CPE_NDJSON_LINE_MAX < sizeof(body)) {
+            size_t L = strlen(a->spool[a->spool_head]);
+            if (body_len + L + 2 >= sizeof(body)) {
+                break;
+            }
+            memcpy(body + body_len, a->spool[a->spool_head], L);
+            body_len += L;
+            body[body_len++] = '\n';
+            body[body_len] = '\0';
+            a->spool_head = (a->spool_head + 1) % a->spool_cap;
+            a->spool_cnt--;
+            n++;
+        }
+        err[0] = '\0';
+        if (cpe_agent_tls_post(a->cfg.https_url, body, body_len,
+                               a->cfg.tls_ca_file[0] ? a->cfg.tls_ca_file
+                                                     : NULL,
+                               a->cfg.tls_cert_file[0] ? a->cfg.tls_cert_file
+                                                       : NULL,
+                               a->cfg.tls_key_file[0] ? a->cfg.tls_key_file
+                                                      : NULL,
+                               err, sizeof(err)) != 0) {
+            return -1;
+        }
+        return n;
     }
     if (strcmp(a->cfg.emit_mode, "spool") == 0) {
         if (a->cfg.spool_path[0] == '\0') {
             return -1;
         }
+        (void)cpe_spool_ensure_parent_dir(a->cfg.spool_path);
         fp = fopen(a->cfg.spool_path, "a");
         if (!fp) {
             return -1;

@@ -82,6 +82,29 @@ int cpe_agent_provide_buffer(cpe_agent_t *a, uint32_t slot, void *ptr,
  */
 int cpe_agent_demo_ping_tick(cpe_agent_t *a);
 
+/**
+ * Field path (F4): host-owned ICMP echo to config probe target, measure RTT,
+ * emit cpe_perf. Uses SOCK_DGRAM IPPROTO_ICMP when available, else SOCK_RAW
+ * (CAP_NET_RAW). @return 0 ok (sample enqueued, even on timeout), -1 hard fail.
+ */
+int cpe_agent_live_ping_tick(cpe_agent_t *a);
+
+/**
+ * One sample tick: demo or live based on config.demo_mode.
+ * @return 0 ok, -1 on failure.
+ */
+int cpe_agent_sample_tick(cpe_agent_t *a);
+
+/** Install last sample (host probes / tests). */
+int cpe_agent_set_last_sample(cpe_agent_t *a, const cpe_perf_sample_t *s);
+
+/**
+ * Feed bare ICMP echo-reply bytes into libnetdiag ping (optional stats).
+ * @return 0 ok, -1 on error.
+ */
+int cpe_agent_feed_icmp_echo_reply(cpe_agent_t *a, const uint8_t *icmp,
+                                   size_t len, uint64_t ts_ms);
+
 /** Copy last sample (for libharness get_local_latency). */
 int cpe_agent_last_sample(const cpe_agent_t *a, cpe_perf_sample_t *out);
 

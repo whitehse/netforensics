@@ -1,0 +1,64 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "CPE ping RTT (ms)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "rawSql": "SELECT ts AS time, rtt_ms, router_id FROM forensics.cpe_perf_samples WHERE probe = 'ping' AND $__timeFilter(ts) AND router_id = '${router_id}' ORDER BY ts",
+          "format": 1,
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPE ping loss",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "rawSql": "SELECT ts AS time, loss, router_id FROM forensics.cpe_perf_samples WHERE probe = 'ping' AND $__timeFilter(ts) AND router_id = '${router_id}' ORDER BY ts",
+          "format": 1,
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${DS_CLICKHOUSE}" }
+    },
+    {
+      "type": "stat",
+      "title": "Samples (window)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "rawSql": "SELECT count() FROM forensics.cpe_perf_samples WHERE $__timeFilter(ts) AND router_id = '${router_id}'",
+          "format": 1,
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["netforensics", "cpe"],
+  "templating": {
+    "list": [
+      {
+        "name": "router_id",
+        "type": "textbox",
+        "label": "Router ID",
+        "current": { "text": "cpe-lab-1", "value": "cpe-lab-1" }
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "CPE performance (cpe_perf_samples)",
+  "uid": "netforensics-cpe-perf",
+  "version": 1
+}

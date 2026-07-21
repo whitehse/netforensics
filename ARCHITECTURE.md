@@ -22,10 +22,13 @@ Plus **CPE performance samples** for latency/loss product surfaces (Track 2).
 cpe/
   forensicsd.c          — --demo | --netlink (ADR-002; do not break)
   sysctl/99-forensics.conf
-agent/                  — Track 2 product CPE agent
+agent/                  — Track 2 + field path CPE agent
   main.c                — CLI + config load
-  agent_loop.c          — libuv timers/signals
-  agent_core.c          — apply_config, spool, demo ping
+  agent_loop.c          — libuv timers/signals + HUP reload
+  agent_core.c          — apply_config, spool, emit_flush, sample_tick
+  live_ping.c           — host ICMP (F4)
+  tls_egress.c          — optional mbedTLS POST (F5)
+  spool_util.c          — shared spool dirs (F6)
   config_yaml.c         — libyaml load
   host_alloc.c          — malloc gate for agent buffers
   perf_sample.c         — cpe_perf NDJSON formatter
@@ -33,6 +36,8 @@ include/
   netforensics.h        — correlation / IPFIX / nfct glue
   cpe_agent.h           — agent public API
   cpe_agent_config.h
+  cpe_agent_tls.h
+  cpe_spool.h
   cpe_host_alloc.h
 src/
   nfct_netlink.c        — AF_NETLINK NETLINK_NETFILTER membership + recv
@@ -84,11 +89,12 @@ client on CPE (ADR-002 / N-A05).
 
 1. Load YAML → `cpe_agent_config_t` via `cpe_agent_reload_config` (defaults if no file).
 2. `cpe_agent_apply_config` → `CONFIG_APPLIED` / `CONFIG_REJECTED`.
-3. libuv timer → `cpe_agent_demo_ping_tick` (synthetic ICMP into libnetdiag).
+3. libuv timer → `cpe_agent_sample_tick` (demo synthetic **or** live ICMP F4).
 4. Format `cpe_perf` → bounded ring → `cpe_agent_emit_flush`
-   (`stdout` or append to `emit.path` when `emit.mode=spool`).
+   (`stdout` | `spool` file | optional `https` mTLS F5).
 5. SIGHUP → re-read YAML path + re-apply CLI `router_id` override; re-arm timer
    if `interval_ms` changed (ADR-007).
+6. Shared spool dir `/var/spool/netforensics` with forensicsd (F6); ring hard cap 1024.
 
 ## Correlation keys
 
@@ -98,7 +104,7 @@ client on CPE (ADR-002 / N-A05).
 - **Wi-Fi**: `(timestamp, client_mac)` / LAN IP join
 - **Perf**: `(router_id, probe, ts)` in `cpe_perf_samples`
 
-## Track 2 extensions (P2.6–P2.9)
+## Track 2 + field path extensions
 
 | Item | API / path |
 |------|------------|
@@ -106,10 +112,14 @@ client on CPE (ADR-002 / N-A05).
 | Fuzz (no libsim) | `cpe_agent_fuzz_config_and_ndjson` / `fuzz/fuzz_cpe_agent.c` |
 | Optional sim | `cpe_agent_sim_drive` (sim_clock + sim_timer; no uring) |
 | nfct reuse | `cpe_agent_feed_nfct` → spool `cpe_nat` lines |
+| Live ICMP (F4) | `cpe_agent_live_ping_tick` / `sample_tick` when `demo_mode=0` |
+| mTLS egress (F5) | `cpe_agent_tls_post` / `emit.mode=https` (soft mbedTLS) |
+| Shared spool (F6) | `cpe_spool.h` → `/var/spool/netforensics/` |
 | OpenWrt | `openwrt/cpe-agent/` + `openwrt/OPKG_ROLLBACK.md` |
 
 ## Deliberate absences
 
 - ClickHouse not required for unit/host tests
-- Full live ICMP raw socket in agent v1 (demo uses synthetic feed)
+- Production requirement for mbedTLS (optional; Vector-local default)
 - Live CAP_NET_ADMIN netlink inside cpe_agent (forensicsd owns that path; agent can feed bytes)
+- Full reverse-proxy PKI automation (ops-owned)

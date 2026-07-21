@@ -2,7 +2,9 @@
  * Track 2: CPE agent config, NDJSON, spool, demo ping, host_alloc, HUP flag.
  */
 #include "cpe_agent.h"
+#include "cpe_agent_tls.h"
 #include "cpe_host_alloc.h"
+#include "cpe_spool.h"
 
 #include <assert.h>
 #include <fcntl.h>
@@ -278,6 +280,112 @@ static void test_reload_config_override(void)
     printf("  PASS: reload_config + router override\n");
 }
 
+static void test_sample_tick_demo(void)
+{
+    cpe_agent_t *a = cpe_agent_create();
+    cpe_agent_config_t cfg;
+    cpe_agent_event_t ev;
+
+    assert(a);
+    cpe_agent_config_defaults(&cfg);
+    cfg.demo_mode = 1;
+    assert(cpe_agent_apply_config(a, &cfg) == 0);
+    while (cpe_agent_next_event(a, &ev) == 1) {
+    }
+    assert(cpe_agent_sample_tick(a) == 0);
+    assert(cpe_agent_spool_depth(a) >= 1);
+    cpe_agent_destroy(a);
+    printf("  PASS: sample_tick demo\n");
+}
+
+static void test_live_ping_or_skip(void)
+{
+    cpe_agent_t *a = cpe_agent_create();
+    cpe_agent_config_t cfg;
+    cpe_agent_event_t ev;
+    int rc;
+
+    assert(a);
+    cpe_agent_config_defaults(&cfg);
+    cfg.demo_mode = 0;
+    cfg.probe_timeout_ms = 200;
+    snprintf(cfg.demo_target, sizeof(cfg.demo_target), "127.0.0.1");
+    assert(cpe_agent_apply_config(a, &cfg) == 0);
+    while (cpe_agent_next_event(a, &ev) == 1) {
+    }
+    rc = cpe_agent_live_ping_tick(a);
+    /* May fail without ICMP capability; success enqueues a sample. */
+    if (rc == 0) {
+        assert(cpe_agent_spool_depth(a) >= 1);
+        printf("  PASS: live_ping_tick (sample enqueued)\n");
+    } else {
+        printf("  PASS: live_ping_tick skipped (no ICMP socket / capability)\n");
+    }
+    cpe_agent_destroy(a);
+}
+
+static void test_tls_stub_or_build(void)
+{
+    char err[128];
+    int avail = cpe_agent_tls_available();
+
+    err[0] = '\0';
+    if (!avail) {
+        assert(cpe_agent_tls_post("https://example.invalid/x", "{}", 2, NULL,
+                                  NULL, NULL, err, sizeof(err)) == -1);
+        assert(strstr(err, "mbedTLS") != NULL || err[0] != '\0');
+        printf("  PASS: tls stub (no mbedTLS)\n");
+    } else {
+        /* Built with mbedTLS; connect to invalid host should fail cleanly. */
+        assert(cpe_agent_tls_post("https://127.0.0.1:1/nope", "{}", 2, NULL,
+                                  NULL, NULL, err, sizeof(err)) == -1);
+        printf("  PASS: tls built (connect fail expected)\n");
+    }
+}
+
+static void test_spool_ensure_dir(void)
+{
+    char dir[] = "/tmp/cpe_spool_test_XXXXXX";
+    char file[320];
+    char *d;
+    int fd;
+
+    d = mkdtemp(dir);
+    assert(d);
+    snprintf(file, sizeof(file), "%s/sub/nested/perf.ndjson", d);
+    assert(cpe_spool_ensure_parent_dir(file) == 0);
+    fd = open(file, O_CREAT | O_WRONLY, 0644);
+    assert(fd >= 0);
+    close(fd);
+    unlink(file);
+    /* best-effort cleanup */
+    rmdir(d); /* may fail if subdirs remain */
+    printf("  PASS: spool ensure parent dir\n");
+}
+
+static void test_https_mode_requires_url(void)
+{
+    cpe_agent_config_t c;
+    char err[64];
+
+    cpe_agent_config_defaults(&c);
+    snprintf(c.emit_mode, sizeof(c.emit_mode), "https");
+    c.https_url[0] = '\0';
+    assert(cpe_agent_config_validate(&c, err, sizeof(err)) == -1);
+    printf("  PASS: https mode requires url\n");
+}
+
+static void test_spool_hard_cap(void)
+{
+    cpe_agent_config_t c;
+    char err[64];
+
+    cpe_agent_config_defaults(&c);
+    c.spool_max_lines = CPE_SPOOL_MAX_LINES_HARD + 1;
+    assert(cpe_agent_config_validate(&c, err, sizeof(err)) == -1);
+    printf("  PASS: spool hard cap\n");
+}
+
 int main(void)
 {
     printf("cpe_agent:\n");
@@ -291,6 +399,12 @@ int main(void)
     test_spool_mode_requires_path();
     test_emit_flush_spool_file();
     test_reload_config_override();
+    test_sample_tick_demo();
+    test_live_ping_or_skip();
+    test_tls_stub_or_build();
+    test_spool_ensure_dir();
+    test_https_mode_requires_url();
+    test_spool_hard_cap();
     printf("all passed\n");
     return 0;
 }

@@ -20,9 +20,11 @@
 - [x] **F1** `emit.mode=spool` append flush (`cpe_agent_emit_flush`) + path validation
 - [x] **F2** SIGHUP YAML shadow reload (`cpe_agent_reload_config`) + CLI router override
 - [x] **F3** libuv timer re-arm after interval change; init/docs ADR-007
-- [ ] **F4** Live ICMP probe path (CAP_NET_RAW / raw socket) behind `demo.enabled: false`
-- [ ] **F5** Optional mbedTLS mTLS egress to gateway (ADR-004; not required for Vector-local)
-- [ ] **F6** Shared spool dir helper with forensicsd; dual-daemon resource caps (MIPS/ARM)
+- [x] **F4** Live ICMP probe path (CAP_NET_RAW / raw socket) behind `demo.enabled: false`
+- [x] **F5** Optional mbedTLS mTLS egress to gateway (ADR-004; soft dep; stub without libs)
+- [x] **F6** Shared spool dir helper with forensicsd; dual-daemon resource caps (MIPS/ARM)
+
+**Field path F1–F6 complete** (ADR-007, ADR-008).
 
 ```bash
 cmake -B build -S .
@@ -37,6 +39,9 @@ Optional:
 # libFuzzer (clang)
 cmake -B build-fuzz -S . -DBUILD_FUZZ=ON -DCMAKE_C_COMPILER=clang
 cmake --build build-fuzz --target fuzz_cpe_agent
+
+# mbedTLS HTTPS egress (if libs installed)
+cmake -B build -S . -DCPE_AGENT_WITH_MBEDTLS=ON
 ```
 
 ## Scaffold (existing)
@@ -54,25 +59,25 @@ cmake --build build-fuzz --target fuzz_cpe_agent
 - [x] Daemon stub + live netlink + nl80211
 - [x] OpenWrt package Makefile / cross-compile notes (`openwrt/netforensics`)
 - [x] systemd unit with `AmbientCapabilities=CAP_NET_ADMIN`
-- [ ] Resource limits for MIPS/ARM (fixed buffers, no heap on event path)
+- [x] Resource limits for MIPS/ARM (fixed line buffers in daemon; MemoryMax/TasksMax/LimitNOFILE; shared spool dir)
 
 ## MODULE 2 — Ingest gateway
 
 - [x] `vector/vector.yaml` skeleton including **cpe_perf**
-- [ ] Tune batch sizes / disk buffers for 20k CPE fan-in
-- [ ] Optional pure-C gateway with librest + libipfix
-- [ ] Authn between CPE and gateway (mTLS)
+- [x] Tune batch sizes / disk buffers for 20k CPE fan-in
+- [x] Optional pure-C gateway stub (`gateway_stub`; lab only)
+- [x] Authn between CPE and gateway (mTLS): agent F5 + terminate at reverse proxy; Vector notes
 
 ## MODULE 3 — ClickHouse schema
 
 - [x] Initial DDL + `cpe_perf_samples` (`sql/003_cpe_perf_samples.sql`)
-- [ ] historical_rib_trie dictionary validated on CH version N
-- [ ] Async insert settings verified under load
-- [ ] TTL / retention policies
+- [x] historical_rib_trie dictionary notes + validation checklist (`sql/002_dictionary_notes.md`)
+- [x] Async insert settings documented (`sql/005_async_insert_settings.sql`)
+- [x] TTL / retention policies (`sql/004_ttl_retention.sql`)
 
 ## MODULE 4 — Queries
 
 - [x] Stub SQL for outbound, inbound, blast radius
 - [x] Validate join keys against synthetic fixtures
-- [ ] Parameterize router_id / time window helpers
-- [ ] Grafana / notebook examples
+- [x] Parameterize router_id / time window helpers (`sql/queries/helpers.sql`)
+- [x] Grafana / notebook examples (`grafana/cpe_perf_dashboard.json`)

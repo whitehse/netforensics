@@ -1,7 +1,13 @@
-# Vector ingest gateway (MODULE 2) — production-oriented skeleton.
-# Tune buffer sizes for 20k+ CPE fan-in.
+# Vector ingest gateway (MODULE 2) — tuned sketch for ~20k CPE fan-in.
+# Authn: terminate mTLS at reverse proxy / load balancer in front of cpe_http;
+# Vector itself is not the PKI root (see docs/decisions/008-*.md F5).
 
 data_dir: /var/lib/vector
+
+# Global acknowledgement / API (ops)
+api:
+  enabled: true
+  address: "127.0.0.1:8687"
 
 sources:
   cpe_http:
@@ -10,11 +16,26 @@ sources:
     decoding:
       codec: json
     path: /cpe/v1/events
+    # Put nginx/haproxy mTLS in front; do not expose cleartext to the internet.
 
   cpe_udp:
     type: socket
     mode: udp
     address: "0.0.0.0:9999"
+    decoding:
+      codec: json
+    # UDP is lab/edge only; prefer HTTP + mTLS for production CPE.
+
+  # Local file tail when CPE uses emit.mode=spool (shared dir F6)
+  cpe_spool_files:
+    type: file
+    include:
+      - /var/spool/netforensics/*.ndjson
+    read_from: beginning
+    ignore_checkpoints: false
+    fingerprint:
+      strategy: device_and_inode
+    multiline: null
     decoding:
       codec: json
 
@@ -48,7 +69,7 @@ sources:
 transforms:
   cpe_route:
     type: route
-    inputs: [cpe_http, cpe_udp]
+    inputs: [cpe_http, cpe_udp, cpe_spool_files]
     route:
       nat: '.type == "cpe_nat"'
       wifi: '.type == "cpe_wifi"'
@@ -82,13 +103,23 @@ sinks:
     database: forensics
     table: cpe_nat_flows_ingest
     compression: gzip
+    auth:
+      strategy: basic
+      user: vector_ingest
+      password: "${CLICKHOUSE_PASSWORD-}"
     batch:
-      max_events: 5000
-      timeout_secs: 1
+      # ~20k CPE × conntrack churn: larger batches, short timeout
+      max_events: 20000
+      timeout_secs: 2
     buffer:
       type: disk
-      max_size: 268435488
+      # ~1 GiB disk buffer (multiple of 256 MiB page size in older Vector)
+      max_size: 1073741824
     skip_unknown_fields: true
+    request:
+      retry_attempts: 10
+      retry_initial_backoff_secs: 1
+      retry_max_duration_secs: 120
 
   clickhouse_wifi:
     type: clickhouse
@@ -98,8 +129,12 @@ sinks:
     table: cpe_wifi_metrics
     compression: gzip
     batch:
-      max_events: 2000
-      timeout_secs: 1
+      max_events: 10000
+      timeout_secs: 2
+    buffer:
+      type: disk
+      max_size: 536870912
+    skip_unknown_fields: true
 
   clickhouse_cpe_perf:
     type: clickhouse
@@ -109,9 +144,16 @@ sinks:
     table: cpe_perf_samples
     compression: gzip
     batch:
-      max_events: 2000
-      timeout_secs: 1
+      max_events: 10000
+      timeout_secs: 2
+    buffer:
+      type: disk
+      max_size: 268435456
     skip_unknown_fields: true
+    # Prefer async inserts on the CH side (sql/005_async_insert_settings.sql)
+    query_settings:
+      async_insert: 1
+      wait_for_async_insert: 0
 
   clickhouse_bgp:
     type: clickhouse
@@ -121,8 +163,11 @@ sinks:
     table: bgp_updates
     compression: gzip
     batch:
-      max_events: 2000
-      timeout_secs: 1
+      max_events: 5000
+      timeout_secs: 2
+    buffer:
+      type: disk
+      max_size: 536870912
 
   # IPFIX: prefer external decoder → HTTP JSON → this sink
   clickhouse_ipfix:
@@ -133,5 +178,8 @@ sinks:
     table: ipfix_flows
     compression: gzip
     batch:
-      max_events: 10000
-      timeout_secs: 1
+      max_events: 50000
+      timeout_secs: 2
+    buffer:
+      type: disk
+      max_size: 2147483648

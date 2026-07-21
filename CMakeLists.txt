@@ -27,6 +27,7 @@ set(LIBSIM_ROOT "${SIBLING_ROOT}/libsim" CACHE PATH "libsim root")
 
 option(CPE_AGENT_WITH_HARNESS "Build libharness local tools (P2.6)" ON)
 option(CPE_AGENT_WITH_LIBSIM "Optional libsim class-B drive (P2.7b)" ON)
+option(CPE_AGENT_WITH_MBEDTLS "Optional mbedTLS HTTPS egress (F5)" ON)
 option(BUILD_FUZZ "Build libFuzzer harness (clang)" OFF)
 
 if(NOT EXISTS "${IPFIX_ROOT}/include/ipfix.h")
@@ -129,7 +130,22 @@ else()
     message(STATUS "  libsim      OFF")
 endif()
 
-# --- CPE agent (Track 2) ---
+# --- optional mbedTLS (F5 / ADR-004) ---
+set(CPE_HAVE_MBEDTLS 0)
+if(CPE_AGENT_WITH_MBEDTLS)
+    find_path(MBEDTLS_INCLUDE_DIR mbedtls/ssl.h)
+    find_library(MBEDTLS_LIBRARY mbedtls)
+    find_library(MBEDX509_LIBRARY mbedx509)
+    find_library(MBEDCRYPTO_LIBRARY mbedcrypto)
+    if(MBEDTLS_INCLUDE_DIR AND MBEDTLS_LIBRARY AND MBEDX509_LIBRARY AND MBEDCRYPTO_LIBRARY)
+        set(CPE_HAVE_MBEDTLS 1)
+        message(STATUS "  mbedTLS     FOUND")
+    else()
+        message(STATUS "  mbedTLS     not found (HTTPS egress stubbed)")
+    endif()
+endif()
+
+# --- CPE agent (Track 2 + field path) ---
 set(CPE_AGENT_SOURCES
     agent/host_alloc.c
     agent/config_defaults.c
@@ -138,6 +154,9 @@ set(CPE_AGENT_SOURCES
     agent/agent_core.c
     agent/agent_loop.c
     agent/agent_fuzz.c
+    agent/live_ping.c
+    agent/spool_util.c
+    agent/tls_egress.c
 )
 if(CPE_HAVE_HARNESS)
     list(APPEND CPE_AGENT_SOURCES agent/harness_driver.c)
@@ -166,6 +185,12 @@ if(CPE_HAVE_LIBSIM)
     target_link_libraries(cpe_agent_lib PUBLIC sim_sib)
     target_compile_definitions(cpe_agent_lib PUBLIC CPE_AGENT_HAVE_LIBSIM=1)
 endif()
+if(CPE_HAVE_MBEDTLS)
+    target_include_directories(cpe_agent_lib PUBLIC ${MBEDTLS_INCLUDE_DIR})
+    target_link_libraries(cpe_agent_lib PUBLIC
+        ${MBEDTLS_LIBRARY} ${MBEDX509_LIBRARY} ${MBEDCRYPTO_LIBRARY})
+    target_compile_definitions(cpe_agent_lib PUBLIC CPE_AGENT_HAVE_MBEDTLS=1)
+endif()
 
 add_executable(forensicsd cpe/forensicsd.c)
 target_link_libraries(forensicsd PRIVATE netforensics_core)
@@ -178,6 +203,9 @@ target_link_libraries(ipfix_ingest_demo PRIVATE netforensics_core)
 
 add_executable(bmp_ingest_demo src/bmp_ingest_main.c)
 target_link_libraries(bmp_ingest_demo PRIVATE netforensics_core)
+
+# Lab-only pure-C HTTP NDJSON sink (MODULE 2); production uses Vector.
+add_executable(gateway_stub src/gateway_stub_main.c)
 
 enable_testing()
 add_executable(test_correlate tests/test_correlate.c)
@@ -233,3 +261,4 @@ message(STATUS "  libyaml     ${YAML_ROOT}")
 message(STATUS "  libuv       FOUND=${LIBUV_FOUND}")
 message(STATUS "  harness     ${CPE_HAVE_HARNESS}")
 message(STATUS "  libsim      ${CPE_HAVE_LIBSIM}")
+message(STATUS "  mbedTLS     ${CPE_HAVE_MBEDTLS}")

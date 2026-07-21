@@ -16,18 +16,28 @@ extern "C" {
 #define CPE_CFG_PATH_MAX       256
 #define CPE_CFG_TARGET_MAX     64
 #define CPE_CFG_MODE_MAX       16
+#define CPE_CFG_URL_MAX        256
 #define CPE_CFG_SPOOL_DEFAULT  256
 
 typedef struct {
     char     router_id[CPE_CFG_ROUTER_ID_MAX];
-    /** stdout | spool (file) — production still NDJSON lines (ADR-002 / N-A05). */
+    /**
+     * stdout | spool | https — production still NDJSON (ADR-002 / N-A05).
+     * https requires mbedTLS build (F5 / ADR-004).
+     */
     char     emit_mode[CPE_CFG_MODE_MAX];
     char     spool_path[CPE_CFG_PATH_MAX];
-    size_t   spool_max_lines;       /* 0 → default 256 */
-    char     demo_target[CPE_CFG_TARGET_MAX];
-    uint32_t demo_interval_ms;      /* synthetic sample period; 0 → 5000 */
+    size_t   spool_max_lines;       /* 0 → default 256; hard cap 1024 */
+    char     demo_target[CPE_CFG_TARGET_MAX]; /* probe target (demo + live) */
+    uint32_t demo_interval_ms;      /* sample period; 0 → 5000 */
     uint32_t sample_interval_ms;    /* alias; used by libuv timer */
-    int      demo_mode;             /* 1 = no CAP_NET_ADMIN; synthetic ping */
+    uint32_t probe_timeout_ms;      /* live ICMP wait; 0 → 1000 */
+    int      demo_mode;             /* 1 = synthetic; 0 = live ICMP (F4) */
+    /* Optional HTTPS egress (F5); only when emit_mode=https */
+    char     https_url[CPE_CFG_URL_MAX];
+    char     tls_ca_file[CPE_CFG_PATH_MAX];
+    char     tls_cert_file[CPE_CFG_PATH_MAX];
+    char     tls_key_file[CPE_CFG_PATH_MAX];
     /**
      * Set by cpe_agent_apply_config on success (not loaded from YAML).
      */

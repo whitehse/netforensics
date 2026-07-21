@@ -1,17 +1,24 @@
-# CPE agent example config (Track 2 + field path).
+# CPE agent example config (Track 2 + field path F1–F6).
 # Load at start; SIGHUP re-reads this file (CLI --router-id override preserved).
 
 router_id: cpe-lab-1
 
 emit:
-  mode: stdout          # stdout | spool
-  # path: /var/spool/cpe_agent/perf.ndjson   # required when mode=spool
+  mode: stdout          # stdout | spool | https
+  # path: /var/spool/netforensics/cpe_perf.ndjson   # required when mode=spool
 
 spool:
-  max_lines: 256
-  # path: /var/spool/cpe_agent/perf.ndjson   # alias for emit.path
+  max_lines: 256        # hard max 1024; OpenWrt package uses 128
+  # path: /var/spool/netforensics/cpe_perf.ndjson   # alias for emit.path
 
 demo:
-  enabled: true         # synthetic ping via libnetdiag (no CAP_NET_ADMIN)
+  enabled: true         # true=synthetic; false=live ICMP (F4)
   target: "1.1.1.1"
   interval_ms: 5000
+  timeout_ms: 1000      # live probe wait
+
+# egress:                       # only when emit.mode=https (F5 / mbedTLS)
+#   url: https://ingest.example/cpe/v1/events
+#   ca_file: /etc/cpe_agent/ca.crt
+#   cert_file: /etc/cpe_agent/client.crt
+#   key_file: /etc/cpe_agent/client.key

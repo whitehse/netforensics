@@ -138,11 +138,14 @@ static void on_timer(uv_timer_t *t)
     handle_hup(ctx);
 
     cfg = cpe_agent_config(ctx->agent);
-    if (cfg && cfg->demo_mode) {
-        if (cpe_agent_demo_ping_tick(ctx->agent) == 0) {
+    if (cfg) {
+        if (cpe_agent_sample_tick(ctx->agent) == 0) {
             if (cpe_agent_emit_flush(ctx->agent) < 0) {
                 fprintf(stderr, "cpe_agent: emit_flush failed\n");
             }
+        } else {
+            fprintf(stderr, "cpe_agent: sample_tick failed (demo=%d)\n",
+                    cfg->demo_mode);
         }
         drain_events(ctx->agent);
         ctx->ticks++;
