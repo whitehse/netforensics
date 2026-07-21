@@ -81,5 +81,5 @@ optional libsim drive, nfct reuse, OpenWrt `cpe-agent` package + opkg rollback.
 
 **LXC / prpl (ADR-009):** demo modes run unprivileged; full netlink/Wi‑Fi/live
 ICMP need host netns + CAP_NET_ADMIN/CAP_NET_RAW. Templates under
-`deploy/lxc/` + `deploy/prpl-lcm/`. aarch64:
-`./scripts/cross_build_aarch64.sh` (poll loop if no libuv).
+`deploy/lxc/` + `deploy/prpl-lcm/`. Field ABI: **aarch64 + musl**
+(`./scripts/cross_build_aarch64.sh`; poll loop if no libuv).

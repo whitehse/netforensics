@@ -16,20 +16,30 @@ netforensics-ee/
 
 Sibling LXC configs: `deploy/lxc/netforensics-profile-{a,b}.conf`.
 
-## Build aarch64 rootfs
+## Build aarch64 **musl** rootfs
+
+Field boards (Calix u6.3 / 7u6 class) are **musl**. Binaries must use
+`/lib/ld-musl-aarch64.so.1` — not glibc (`ld-linux-aarch64.so.1`).
 
 ```bash
-# 1) Toolchain (no root)
+# 1) Bootlin aarch64--musl toolchain (no root)
 ./scripts/fetch_bootlin_aarch64.sh
 export BOOTLIN_TOOLCHAIN=$HOME/toolchains/aarch64--musl--stable-2025.08-1
 
-# 2) Cross-build field profile
+# 2) Cross-build field profile (fails if output is not musl)
 ./scripts/cross_build_aarch64.sh
 
 # 3) Stage EE rootfs
 DEST=deploy/prpl-lcm/netforensics-ee/rootfs \
   ./scripts/stage_lxc_rootfs.sh build-aarch64
+
+# 4) Sanity
+file build-aarch64/cpe_agent
+# expect: ARM aarch64 ... interpreter /lib/ld-musl-aarch64.so.1
 ```
+
+Do **not** use `gcc-aarch64-linux-gnu` (Debian glibc) for field images.
+OpenWrt SDK path is fine when the SDK is musl (`STAGING_DIR` + `TOOLCHAIN_DIR`).
 
 ## Host preparation (Profile A)
 

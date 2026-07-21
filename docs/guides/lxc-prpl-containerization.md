@@ -183,18 +183,23 @@ forensicsd --netlink --router-id lab --wifi-if wlan0
 | EE entrypoint | `deploy/prpl-lcm/netforensics-ee/files/entrypoint.sh` |
 | Stage rootfs | `scripts/stage_lxc_rootfs.sh` |
 
-## aarch64 cross-build path
+## aarch64 **musl** cross-build path (field)
+
+Boards are **musl**. Field images must link against musl
+(`interpreter /lib/ld-musl-aarch64.so.1`), not glibc.
 
 ```bash
-./scripts/fetch_bootlin_aarch64.sh          # musl toolchain → ~/toolchains
-./scripts/cross_build_aarch64.sh            # build-aarch64/{cpe_agent,forensicsd}
+./scripts/fetch_bootlin_aarch64.sh          # aarch64--musl → ~/toolchains
+./scripts/cross_build_aarch64.sh            # fails if artifacts are not musl
 DEST=deploy/prpl-lcm/netforensics-ee/rootfs \
   ./scripts/stage_lxc_rootfs.sh build-aarch64
+file build-aarch64/cpe_agent                # expect ld-musl-aarch64.so.1
 ```
 
-CMake toolchains: `cmake/toolchains/aarch64-bootlin.cmake`,
-`aarch64-linux-gnu.cmake`, `openwrt-generic.cmake`. Field profile uses the
-**poll loop** when libuv is not in the sysroot (`agent_loop_poll.c`).
+CMake toolchains: `cmake/toolchains/aarch64-bootlin.cmake` (musl field default),
+`openwrt-generic.cmake` (OpenWrt musl SDK), `aarch64-linux-gnu.cmake` (**glibc
+lab only**, requires `--allow-glibc`). Field profile uses the **poll loop** when
+libuv is not in the sysroot (`agent_loop_poll.c`).
 
 ## Conclusion
 

@@ -61,16 +61,20 @@ run unprivileged. See:
 - LXC configs: `deploy/lxc/netforensics-profile-{a,b}.conf`
 - prpl EE: `deploy/prpl-lcm/netforensics-ee/`
 
-### aarch64 field cross-build
+### aarch64 **musl** field cross-build
+
+Boards are **musl** (not glibc). Default Bootlin toolchain is `aarch64--musl`.
 
 ```bash
 ./scripts/fetch_bootlin_aarch64.sh
-./scripts/cross_build_aarch64.sh
+./scripts/cross_build_aarch64.sh   # refuses non-musl artifacts
 DEST=deploy/prpl-lcm/netforensics-ee/rootfs \
   ./scripts/stage_lxc_rootfs.sh build-aarch64
-file build-aarch64/cpe_agent   # expect: ARM aarch64, musl
+file build-aarch64/cpe_agent
+# expect: ARM aarch64, interpreter /lib/ld-musl-aarch64.so.1
 ```
 
-OpenWrt SDK: set `STAGING_DIR` + `TOOLCHAIN_DIR` and use
-`cmake/toolchains/openwrt-generic.cmake`.
+OpenWrt musl SDK: set `STAGING_DIR` + `TOOLCHAIN_DIR` and use
+`cmake/toolchains/openwrt-generic.cmake`. Avoid Debian
+`aarch64-linux-gnu` (glibc) for field images.
 

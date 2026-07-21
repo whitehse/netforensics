@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Download a Bootlin aarch64 musl toolchain into $HOME/toolchains (no root).
-# Override:
-#   BOOTLIN_VARIANT=glibc|musl (default musl)
+# Download a Bootlin aarch64 **musl** toolchain into $HOME/toolchains (no root).
+# Field default for Calix u6.3 / 7u6 / prpl OpenWrt-class boards.
+#
+# Override (lab only):
+#   BOOTLIN_VARIANT=glibc   # not for field musl boards
 #   BOOTLIN_RELEASE=stable-2025.08-1
 #   DEST=$HOME/toolchains
 set -euo pipefail
@@ -12,6 +14,10 @@ DEST="${DEST:-${HOME}/toolchains}"
 NAME="aarch64--${VARIANT}--${RELEASE}"
 URL="https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/${NAME}.tar.xz"
 TARBALL="${DEST}/${NAME}.tar.xz"
+
+if [[ "${VARIANT}" != "musl" ]]; then
+  echo "WARNING: VARIANT=${VARIANT} — field boards are musl. Prefer default." >&2
+fi
 
 mkdir -p "${DEST}"
 if [[ -d "${DEST}/${NAME}" && -x "${DEST}/${NAME}/bin"/*-gcc ]]; then
@@ -45,3 +51,4 @@ if [[ ! -x ${GCC} ]]; then
 fi
 echo "OK: ${GCC}"
 echo "export BOOTLIN_TOOLCHAIN=${DEST}/${NAME}"
+echo "Field ABI: aarch64 + ${VARIANT} (interpreter /lib/ld-musl-aarch64.so.1 for musl)"

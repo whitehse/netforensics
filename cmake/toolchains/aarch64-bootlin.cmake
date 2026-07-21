@@ -1,6 +1,8 @@
-# Bootlin prebuilt aarch64 toolchain (glibc or musl).
+# Bootlin prebuilt aarch64 toolchain — **musl is the field default**
+# (Calix u6.3 / 7u6 / prpl OpenWrt-class boards).
+#
 # Expected layout after scripts/fetch_bootlin_aarch64.sh:
-#   $ENV{HOME}/toolchains/aarch64--*/bin/*-gcc
+#   $ENV{HOME}/toolchains/aarch64--musl--stable-*/bin/*-gcc
 #
 # Override:
 #   -DBOOTLIN_TOOLCHAIN=/path/to/aarch64--musl--stable-...
@@ -16,9 +18,8 @@ if(NOT DEFINED BOOTLIN_TOOLCHAIN OR BOOTLIN_TOOLCHAIN STREQUAL "")
     if(DEFINED ENV{BOOTLIN_TOOLCHAIN} AND NOT "$ENV{BOOTLIN_TOOLCHAIN}" STREQUAL "")
         set(BOOTLIN_TOOLCHAIN "$ENV{BOOTLIN_TOOLCHAIN}")
     else()
-        file(GLOB _bootlin_candidates
-            "$ENV{HOME}/toolchains/aarch64--musl--*"
-            "$ENV{HOME}/toolchains/aarch64--glibc--*")
+        # Field boards are musl — never auto-pick glibc.
+        file(GLOB _bootlin_candidates "$ENV{HOME}/toolchains/aarch64--musl--*")
         list(SORT _bootlin_candidates)
         list(REVERSE _bootlin_candidates)
         if(_bootlin_candidates)
@@ -29,12 +30,17 @@ endif()
 
 if(NOT BOOTLIN_TOOLCHAIN OR NOT EXISTS "${BOOTLIN_TOOLCHAIN}")
     message(FATAL_ERROR
-        "Bootlin toolchain not found. Run scripts/fetch_bootlin_aarch64.sh "
-        "or set -DBOOTLIN_TOOLCHAIN=/path/to/toolchain")
+        "Bootlin musl toolchain not found. Run scripts/fetch_bootlin_aarch64.sh "
+        "or set -DBOOTLIN_TOOLCHAIN=/path/to/aarch64--musl--...")
 endif()
 
 get_filename_component(BOOTLIN_TOOLCHAIN "${BOOTLIN_TOOLCHAIN}" ABSOLUTE)
-message(STATUS "Bootlin toolchain: ${BOOTLIN_TOOLCHAIN}")
+message(STATUS "Bootlin toolchain (musl field): ${BOOTLIN_TOOLCHAIN}")
+if(NOT BOOTLIN_TOOLCHAIN MATCHES "musl")
+    message(WARNING
+        "BOOTLIN_TOOLCHAIN path does not contain 'musl': ${BOOTLIN_TOOLCHAIN}. "
+        "Field boards are musl-based; glibc binaries will not run there.")
+endif()
 
 file(GLOB _cc "${BOOTLIN_TOOLCHAIN}/bin/*-linux-*-gcc")
 file(GLOB _cxx "${BOOTLIN_TOOLCHAIN}/bin/*-linux-*-g++")
