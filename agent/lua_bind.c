@@ -89,6 +89,8 @@ static int l_config(lua_State *L)
     lua_setfield(L, -2, "target");
     lua_pushstring(L, c->arping_if);
     lua_setfield(L, -2, "iface");
+    lua_pushstring(L, c->wifi_if);
+    lua_setfield(L, -2, "wifi_if");
     lua_pushboolean(L, c->demo_mode ? 1 : 0);
     lua_setfield(L, -2, "demo");
     lua_pushinteger(L, (lua_Integer)c->demo_interval_ms);
@@ -350,6 +352,217 @@ static int l_set_iface(lua_State *L)
     return 1;
 }
 
+static int l_set_wifi_if(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_agent_config_t cfg;
+    const char *iface;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    iface = luaL_checkstring(L, 1);
+    if (strlen(iface) >= CPE_CFG_IFACE_MAX) {
+        return luaL_error(L, "wifi iface too long");
+    }
+    cfg = *cpe_agent_config(a);
+    snprintf(cfg.wifi_if, sizeof(cfg.wifi_if), "%s", iface);
+    if (cpe_agent_apply_config(a, &cfg) != 0) {
+        drain_events(a);
+        return luaL_error(L, "apply_config failed for wifi_if");
+    }
+    drain_events(a);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+static void push_wifi_iface(lua_State *L, const cpe_wifi_iface_state_t *i)
+{
+    lua_createtable(L, 0, 8);
+    lua_pushstring(L, i->ifname);
+    lua_setfield(L, -2, "ifname");
+    lua_pushinteger(L, i->ifindex);
+    lua_setfield(L, -2, "ifindex");
+    lua_pushboolean(L, i->up ? 1 : 0);
+    lua_setfield(L, -2, "up");
+    lua_pushboolean(L, i->running ? 1 : 0);
+    lua_setfield(L, -2, "running");
+    lua_pushboolean(L, i->wireless ? 1 : 0);
+    lua_setfield(L, -2, "wireless");
+    lua_pushstring(L, i->operstate);
+    lua_setfield(L, -2, "operstate");
+    lua_pushstring(L, i->mac);
+    lua_setfield(L, -2, "mac");
+    lua_pushinteger(L, (lua_Integer)i->mtu);
+    lua_setfield(L, -2, "mtu");
+}
+
+static void push_wifi_station(lua_State *L, const cpe_wifi_station_t *s)
+{
+    lua_createtable(L, 0, 12);
+    lua_pushstring(L, s->mac);
+    lua_setfield(L, -2, "mac");
+    lua_pushinteger(L, (lua_Integer)s->signal_dbm);
+    lua_setfield(L, -2, "rssi");
+    lua_pushinteger(L, (lua_Integer)s->signal_avg_dbm);
+    lua_setfield(L, -2, "rssi_avg");
+    lua_pushinteger(L, (lua_Integer)s->snr_db);
+    lua_setfield(L, -2, "snr");
+    lua_pushinteger(L, (lua_Integer)s->mcs);
+    lua_setfield(L, -2, "mcs");
+    lua_pushinteger(L, (lua_Integer)s->tx_retries);
+    lua_setfield(L, -2, "tx_retries");
+    lua_pushinteger(L, (lua_Integer)s->tx_failed);
+    lua_setfield(L, -2, "tx_failed");
+    lua_pushinteger(L, (lua_Integer)s->rx_bytes);
+    lua_setfield(L, -2, "rx_bytes");
+    lua_pushinteger(L, (lua_Integer)s->tx_bytes);
+    lua_setfield(L, -2, "tx_bytes");
+    lua_pushinteger(L, (lua_Integer)s->freq_mhz);
+    lua_setfield(L, -2, "freq_mhz");
+    lua_pushboolean(L, s->has_signal ? 1 : 0);
+    lua_setfield(L, -2, "has_signal");
+    lua_pushboolean(L, s->has_mcs ? 1 : 0);
+    lua_setfield(L, -2, "has_mcs");
+}
+
+static void push_wifi_snapshot(lua_State *L, const cpe_wifi_snapshot_t *snap)
+{
+    size_t i;
+
+    lua_createtable(L, 0, 6);
+    push_wifi_iface(L, &snap->iface);
+    lua_setfield(L, -2, "iface");
+
+    lua_createtable(L, (int)snap->station_count, 0);
+    for (i = 0; i < snap->station_count; i++) {
+        push_wifi_station(L, &snap->stations[i]);
+        lua_rawseti(L, -2, (lua_Integer)(i + 1));
+    }
+    lua_setfield(L, -2, "stations");
+
+    lua_pushinteger(L, (lua_Integer)snap->station_count);
+    lua_setfield(L, -2, "station_count");
+    lua_pushboolean(L, snap->stations_valid ? 1 : 0);
+    lua_setfield(L, -2, "stations_valid");
+    lua_pushboolean(L, snap->demo ? 1 : 0);
+    lua_setfield(L, -2, "demo");
+    lua_pushstring(L, snap->ts_iso);
+    lua_setfield(L, -2, "ts");
+    if (snap->err[0]) {
+        lua_pushstring(L, snap->err);
+        lua_setfield(L, -2, "err");
+    }
+}
+
+static int l_wifi_state(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_wifi_iface_state_t st;
+    const char *iface = NULL;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
+        iface = luaL_checkstring(L, 1);
+    }
+    if (cpe_agent_wifi_iface_state(a, iface, &st) != 0) {
+        return luaL_error(L, "wifi iface not found");
+    }
+    push_wifi_iface(L, &st);
+    return 1;
+}
+
+static int l_wifi_stats(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_wifi_snapshot_t snap;
+    const char *iface = NULL;
+    int emit = 0;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
+        iface = luaL_checkstring(L, 1);
+    }
+    if (lua_gettop(L) >= 2) {
+        emit = lua_toboolean(L, 2);
+    }
+    if (cpe_agent_wifi_dump(a, iface, emit, &snap) != 0) {
+        return luaL_error(L, "wifi dump failed (iface missing?)");
+    }
+    drain_events(a);
+    push_wifi_snapshot(L, &snap);
+    return 1;
+}
+
+static int l_wifi_list(lua_State *L)
+{
+    char names[CPE_WIFI_STA_MAX][CPE_WIFI_IFNAME_MAX];
+    int n;
+    int i;
+
+    /*
+     * Convenience: cpe.wifi_list("ath0", true) is a common mix-up with
+     * wifi_stats(iface, emit). If the first arg is a string, forward.
+     */
+    if (lua_gettop(L) >= 1 && lua_type(L, 1) == LUA_TSTRING) {
+        fprintf(stderr,
+                "cpe: note: wifi_list() takes no args; "
+                "forwarding to wifi_stats(iface, emit)\n");
+        return l_wifi_stats(L);
+    }
+
+    n = cpe_agent_wifi_list_ifaces(names, CPE_WIFI_STA_MAX);
+    if (n < 0) {
+        n = 0;
+    }
+    lua_createtable(L, n, 0);
+    for (i = 0; i < n; i++) {
+        lua_pushstring(L, names[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 1;
+}
+
+static int l_demo_wifi_stats(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_wifi_snapshot_t snap;
+    int emit = 1;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    if (lua_gettop(L) >= 1) {
+        emit = lua_toboolean(L, 1);
+    }
+    if (cpe_agent_demo_wifi_dump(a, emit, &snap) != 0) {
+        return luaL_error(L, "demo_wifi_dump failed");
+    }
+    drain_events(a);
+    push_wifi_snapshot(L, &snap);
+    return 1;
+}
+
+static int l_last_wifi(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_wifi_snapshot_t snap;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    if (cpe_agent_last_wifi(a, &snap) != 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    push_wifi_snapshot(L, &snap);
+    return 1;
+}
+
 static int l_sample(lua_State *L)
 {
     cpe_agent_t *a = l_agent(L);
@@ -516,10 +729,16 @@ static const luaL_Reg cpe_funcs[] = {
     {"set_router_id", l_set_router_id},
     {"set_interval", l_set_interval},
     {"set_iface", l_set_iface},
+    {"set_wifi_if", l_set_wifi_if},
     {"demo_ping", l_demo_ping},
     {"live_ping", l_live_ping},
     {"demo_arping", l_demo_arping},
     {"arping", l_arping},
+    {"wifi_list", l_wifi_list},
+    {"wifi_state", l_wifi_state},
+    {"wifi_stats", l_wifi_stats},
+    {"demo_wifi_stats", l_demo_wifi_stats},
+    {"last_wifi", l_last_wifi},
     {"sample", l_sample},
     {"last_sample", l_last_sample},
     {"latency", l_latency},
@@ -557,10 +776,16 @@ void cpe_lua_print_help(FILE *fp)
             "  cpe.set_router_id(id)\n"
             "  cpe.set_interval(ms)\n"
             "  cpe.set_iface(name)        -- L2 interface for arping\n"
+            "  cpe.set_wifi_if(name)      -- Wi-Fi iface for nl80211 stats\n"
             "  cpe.demo_ping()            -- synthetic ICMP sample → table\n"
             "  cpe.live_ping([ip])        -- live ICMP sample → table + emit\n"
             "  cpe.demo_arping([ip])      -- synthetic ARP sample → table\n"
             "  cpe.arping([ip],[iface])   -- live ARP (CAP_NET_RAW) → table\n"
+            "  cpe.wifi_list()            -- wireless-looking ifaces\n"
+            "  cpe.wifi_state([iface])    -- operstate/up/mac/mtu table\n"
+            "  cpe.wifi_stats([iface],[emit]) -- iface + station dump (nl80211)\n"
+            "  cpe.demo_wifi_stats([emit])-- synthetic station snapshot\n"
+            "  cpe.last_wifi()            -- last Wi-Fi snapshot or nil\n"
             "  cpe.sample()               -- one tick (demo or live per config)\n"
             "  cpe.last_sample()          -- last sample table or nil\n"
             "  cpe.latency()              -- JSON string (get_local_latency)\n"

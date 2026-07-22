@@ -14,6 +14,7 @@ How to use `cpe_agent` as it exists today, with copy-paste examples.
 | Demo ping | Synthetic RTT/loss (no privileges) |
 | Live ICMP | Real echo to `demo.target` (`demo.enabled: false`) |
 | Live / demo arping | ARP request/reply → `probe=arping` (meta.mac / iface); Lua `cpe.arping` |
+| Wi‑Fi state / stats | iface operstate + nl80211 stations → `cpe_wifi` NDJSON; Lua `cpe.wifi_*` |
 | Emit: stdout | NDJSON on stdout (lab / Vector pipe) |
 | Emit: spool | Append to a file under a size cap |
 | Emit: https | Optional mTLS POST (needs mbedTLS build) |

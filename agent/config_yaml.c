@@ -148,6 +148,13 @@ static int apply_scalar(cpe_agent_config_t *c, const char *key, const char *val,
         }
         return 0;
     }
+    if (strcmp(key, "wifi.if") == 0 || strcmp(key, "wifi_if") == 0 ||
+        strcmp(key, "wifi.iface") == 0) {
+        if (copy_str(c->wifi_if, sizeof(c->wifi_if), val) != 0) {
+            FAIL("too long");
+        }
+        return 0;
+    }
     if (strcmp(key, "demo.interval_ms") == 0 ||
         strcmp(key, "demo_interval_ms") == 0 ||
         strcmp(key, "sample.interval_ms") == 0 ||
@@ -220,6 +227,9 @@ static const char *const g_paths[] = {
     "arping_if",
     "arping.iface",
     "iface",
+    "wifi.if",
+    "wifi_if",
+    "wifi.iface",
     "demo.interval_ms",
     "demo_interval_ms",
     "sample.interval_ms",

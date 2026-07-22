@@ -81,6 +81,22 @@ int main(void)
                             err, sizeof(err)) == 0);
     printf("  PASS: cpe.set_iface\n");
 
+    err[0] = '\0';
+    assert(cpe_lua_dostring(
+               L,
+               "local w = cpe.demo_wifi_stats(true); "
+               "assert(w and w.stations and #w.stations >= 1); "
+               "assert(w.stations[1].mac ~= nil); "
+               "assert(cpe.last_wifi() ~= nil)",
+               err, sizeof(err)) == 0);
+    printf("  PASS: cpe.demo_wifi_stats / last_wifi\n");
+
+    err[0] = '\0';
+    assert(cpe_lua_dostring(
+               L, "local t = cpe.wifi_list(); assert(type(t) == 'table')", err,
+               sizeof(err)) == 0);
+    printf("  PASS: cpe.wifi_list\n");
+
     cpe_lua_destroy(L);
     cpe_agent_destroy(a);
     printf("all passed\n");

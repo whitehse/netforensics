@@ -31,6 +31,7 @@ typedef struct {
     size_t   spool_max_lines;       /* 0 → default 256; hard cap 1024 */
     char     demo_target[CPE_CFG_TARGET_MAX]; /* probe target (demo + live) */
     char     arping_if[CPE_CFG_IFACE_MAX];    /* L2 iface for arping; empty=auto */
+    char     wifi_if[CPE_CFG_IFACE_MAX];      /* Wi‑Fi iface for nl80211; empty=auto */
     uint32_t demo_interval_ms;      /* sample period; 0 → 5000 */
     uint32_t sample_interval_ms;    /* alias; used by libuv timer */
     uint32_t probe_timeout_ms;      /* live ICMP/ARP wait; 0 → 1000 */

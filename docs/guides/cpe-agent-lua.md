@@ -59,10 +59,16 @@ History defaults to `~/.cpe_agent_history`, or `/tmp/cpe_agent_history` if
 | `cpe.set_router_id(id)` | bool | Device id in NDJSON |
 | `cpe.set_interval(ms)` | bool | Sample period for timer mode |
 | `cpe.set_iface(name)` | bool | Default L2 interface for arping |
+| `cpe.set_wifi_if(name)` | bool | Default Wi‑Fi iface for nl80211 |
 | `cpe.demo_ping()` | sample table | Synthetic ICMP; also emits/flushes |
 | `cpe.live_ping([ip])` | sample table | Live ICMP; optional target override |
 | `cpe.demo_arping([ip])` | sample table | Synthetic ARP (`probe=arping`) |
 | `cpe.arping([ip],[iface])` | sample table | Live ARP (AF_PACKET / CAP_NET_RAW) |
+| `cpe.wifi_list()` | string array | Wireless-looking interfaces |
+| `cpe.wifi_state([iface])` | table | operstate, up, running, mac, mtu |
+| `cpe.wifi_stats([iface],[emit])` | snapshot | iface + stations (nl80211) |
+| `cpe.demo_wifi_stats([emit])` | snapshot | Synthetic station snapshot |
+| `cpe.last_wifi()` | snapshot or nil | Last Wi‑Fi dump |
 | `cpe.sample()` | sample table | One tick per current demo/live flag |
 | `cpe.last_sample()` | sample or nil | In-memory last result |
 | `cpe.latency()` | string | JSON for `get_local_latency` |
@@ -107,6 +113,14 @@ cpe> cpe.set_iface("br-lan")
 cpe> cpe.arping("192.168.1.1")          -- live; needs CAP_NET_RAW
 cpe> cpe.arping("192.168.1.1", "eth0")  -- explicit iface
 -- meta includes mac + if, e.g. {"mac":"aa:bb:..","if":"br-lan",...}
+
+cpe> cpe.wifi_list()
+cpe> cpe.wifi_state("wlan0")
+cpe> cpe.demo_wifi_stats()
+cpe> w = cpe.wifi_stats("wlan0", true)  -- live nl80211; emit cpe_wifi NDJSON
+cpe> for _,sta in ipairs(w.stations) do
+...   print(sta.mac, sta.rssi, sta.mcs, sta.tx_bytes)
+... end
 
 cpe> cpe.set_target("8.8.8.8")
 cpe> s = cpe.live_ping()

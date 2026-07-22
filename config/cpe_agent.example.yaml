@@ -21,6 +21,10 @@ demo:
 # arping:
 #   if: br-lan
 
+# Wi-Fi iface for nl80211 station dumps (empty = first wireless iface / wlan0)
+# wifi:
+#   if: wlan0
+
 # egress:                       # only when emit.mode=https (F5 / mbedTLS)
 #   url: https://ingest.example/cpe/v1/events
 #   ca_file: /etc/cpe_agent/ca.crt

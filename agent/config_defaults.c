@@ -21,6 +21,7 @@ void cpe_agent_config_defaults(cpe_agent_config_t *c)
     c->spool_max_lines = CPE_CFG_SPOOL_DEFAULT;
     snprintf(c->demo_target, sizeof(c->demo_target), "1.1.1.1");
     c->arping_if[0] = '\0'; /* auto-detect */
+    c->wifi_if[0] = '\0';   /* auto-detect wireless iface */
     c->demo_interval_ms = 5000;
     c->sample_interval_ms = 5000;
     c->probe_timeout_ms = 1000;

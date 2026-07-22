@@ -264,6 +264,7 @@ set(CPE_AGENT_SOURCES
     agent/agent_fuzz.c
     agent/live_ping.c
     agent/live_arping.c
+    agent/wifi_stats.c
     agent/spool_util.c
     agent/tls_egress.c
     agent/lua_bind.c

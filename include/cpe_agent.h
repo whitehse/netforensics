@@ -52,6 +52,54 @@ typedef struct {
     char   meta[CPE_PERF_META_MAX]; /* small JSON object string or empty */
 } cpe_perf_sample_t;
 
+/** Max stations retained in one Wi‑Fi snapshot. */
+#define CPE_WIFI_STA_MAX   32
+#define CPE_WIFI_IF_MAX    32
+#define CPE_WIFI_MAC_MAX   18
+#define CPE_WIFI_IFNAME_MAX 32
+
+/** One associated client from nl80211 station dump. */
+typedef struct {
+    char     mac[CPE_WIFI_MAC_MAX];
+    int32_t  signal_dbm;
+    int32_t  signal_avg_dbm;
+    int8_t   snr_db;
+    uint8_t  mcs; /* 0xFF if unknown */
+    uint32_t tx_retries;
+    uint32_t tx_failed;
+    uint32_t rx_bytes;
+    uint32_t tx_bytes;
+    uint32_t freq_mhz;
+    int      has_signal;
+    int      has_mcs;
+} cpe_wifi_station_t;
+
+/** Interface / radio link state (sysfs + ioctl; no nl80211 required). */
+typedef struct {
+    char     ifname[CPE_WIFI_IFNAME_MAX];
+    int      ifindex;
+    int      up;           /**< IFF_UP */
+    int      running;      /**< IFF_RUNNING */
+    int      wireless;     /**< 1 if appears to be a Wi‑Fi iface */
+    char     operstate[16];/**< kernel operstate: up/down/dormant/… */
+    char     mac[CPE_WIFI_MAC_MAX];
+    uint32_t mtu;
+} cpe_wifi_iface_state_t;
+
+/**
+ * Point-in-time Wi‑Fi view: iface state + station table.
+ * @p stations_valid is 0 if nl80211 dump failed (iface state may still be ok).
+ */
+typedef struct {
+    cpe_wifi_iface_state_t iface;
+    cpe_wifi_station_t     stations[CPE_WIFI_STA_MAX];
+    size_t                 station_count;
+    int                    stations_valid;
+    int                    demo;
+    char                   ts_iso[CPE_PERF_TS_MAX];
+    char                   err[96]; /**< set when dump partially fails */
+} cpe_wifi_snapshot_t;
+
 typedef struct cpe_agent cpe_agent_t;
 
 cpe_agent_t *cpe_agent_create(void);
@@ -107,6 +155,37 @@ int cpe_agent_live_arping_tick(cpe_agent_t *a);
  */
 int cpe_agent_demo_arping(cpe_agent_t *a, const char *ipv4_opt);
 int cpe_agent_demo_arping_tick(cpe_agent_t *a);
+
+/**
+ * Read interface operstate / flags / MAC (no CAP_NET_ADMIN required typically).
+ * @p ifname_opt NULL → config wifi_if, else first wireless iface, else "wlan0".
+ * @return 0 ok, -1 if interface missing.
+ */
+int cpe_agent_wifi_iface_state(cpe_agent_t *a, const char *ifname_opt,
+                               cpe_wifi_iface_state_t *out);
+
+/**
+ * Live: iface state + nl80211 station dump (needs nl80211; CAP_NET_ADMIN often).
+ * Stores snapshot as last Wi‑Fi view; optionally emits cpe_wifi NDJSON to spool
+ * when @p emit_ndjson is non-zero.
+ * @return 0 ok (stations_valid may still be 0), -1 hard fail (no iface).
+ */
+int cpe_agent_wifi_dump(cpe_agent_t *a, const char *ifname_opt, int emit_ndjson,
+                        cpe_wifi_snapshot_t *out_opt);
+
+/** Synthetic stations (no privileges); stores last Wi‑Fi snapshot. */
+int cpe_agent_demo_wifi_dump(cpe_agent_t *a, int emit_ndjson,
+                             cpe_wifi_snapshot_t *out_opt);
+
+/** Copy last Wi‑Fi snapshot; @return 0 ok, -1 if none yet. */
+int cpe_agent_last_wifi(const cpe_agent_t *a, cpe_wifi_snapshot_t *out);
+
+/**
+ * List wireless-looking interfaces into @p names (each CPE_WIFI_IFNAME_MAX).
+ * @return count written (0..max_names), or -1.
+ */
+int cpe_agent_wifi_list_ifaces(char names[][CPE_WIFI_IFNAME_MAX],
+                               size_t max_names);
 
 /**
  * One sample tick: demo or live based on config.demo_mode.

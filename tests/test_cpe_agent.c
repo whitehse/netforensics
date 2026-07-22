@@ -347,6 +347,32 @@ static void test_demo_arping(void)
     printf("  PASS: demo_arping\n");
 }
 
+static void test_demo_wifi(void)
+{
+    cpe_agent_t *a = cpe_agent_create();
+    cpe_agent_config_t cfg;
+    cpe_agent_event_t ev;
+    cpe_wifi_snapshot_t snap;
+    cpe_wifi_snapshot_t last;
+
+    assert(a);
+    cpe_agent_config_defaults(&cfg);
+    assert(cpe_agent_apply_config(a, &cfg) == 0);
+    while (cpe_agent_next_event(a, &ev) == 1) {
+    }
+    assert(cpe_agent_demo_wifi_dump(a, 0, &snap) == 0);
+    assert(snap.demo == 1);
+    assert(snap.stations_valid == 1);
+    assert(snap.station_count >= 1);
+    assert(snap.stations[0].mac[0] != '\0');
+    assert(cpe_agent_last_wifi(a, &last) == 0);
+    assert(last.station_count == snap.station_count);
+    /* emit=1 flushes to stdout (spool ends empty); just ensure no crash */
+    assert(cpe_agent_demo_wifi_dump(a, 1, &snap) == 0);
+    cpe_agent_destroy(a);
+    printf("  PASS: demo_wifi_dump\n");
+}
+
 static void test_tls_stub_or_build(void)
 {
     char err[128];
@@ -425,6 +451,7 @@ int main(void)
     test_sample_tick_demo();
     test_live_ping_or_skip();
     test_demo_arping();
+    test_demo_wifi();
     test_tls_stub_or_build();
     test_spool_ensure_dir();
     test_https_mode_requires_url();

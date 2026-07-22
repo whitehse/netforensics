@@ -39,6 +39,9 @@ struct cpe_agent {
     cpe_perf_sample_t last;
     int               has_last;
 
+    cpe_wifi_snapshot_t last_wifi;
+    int                 has_last_wifi;
+
     char  (*spool)[CPE_SPOOL_LINE];
     size_t spool_cap;
     size_t spool_head;
@@ -383,6 +386,25 @@ int cpe_agent_set_last_sample(cpe_agent_t *a, const cpe_perf_sample_t *s)
     a->last = *s;
     a->has_last = 1;
     (void)eq_push(a, CPE_AGENT_EVENT_SAMPLE_READY, "sample", 0, 0);
+    return 0;
+}
+
+int cpe_agent_set_last_wifi(cpe_agent_t *a, const cpe_wifi_snapshot_t *s)
+{
+    if (!a || !s) {
+        return -1;
+    }
+    a->last_wifi = *s;
+    a->has_last_wifi = 1;
+    return 0;
+}
+
+int cpe_agent_last_wifi(const cpe_agent_t *a, cpe_wifi_snapshot_t *out)
+{
+    if (!a || !out || !a->has_last_wifi) {
+        return -1;
+    }
+    *out = a->last_wifi;
     return 0;
 }
 
