@@ -47,14 +47,15 @@ static uint16_t icmp_cksum(const void *data, size_t len)
     return (uint16_t)~sum;
 }
 
-static uint64_t mono_ms(void)
+/** Monotonic time in nanoseconds (for sub-ms RTT). */
+static uint64_t mono_ns(void)
 {
     struct timespec ts;
 
     if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
         return 0;
     }
-    return (uint64_t)ts.tv_sec * 1000ull + (uint64_t)ts.tv_nsec / 1000000ull;
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
 }
 
 static void iso_now(char *out, size_t n)
@@ -139,7 +140,7 @@ int cpe_agent_live_ping_tick(cpe_agent_t *a)
     const uint8_t *icmp;
     size_t icmp_len = 0;
     struct pollfd pfd;
-    uint64_t t0, t1;
+    uint64_t t0_ns, t1_ns;
     uint32_t timeout_ms;
     cpe_perf_sample_t sample;
     char line[CPE_NDJSON_LINE_MAX];
@@ -182,7 +183,8 @@ int cpe_agent_live_ping_tick(cpe_agent_t *a)
     req.checksum = 0;
     req.checksum = icmp_cksum(&req, sizeof(req));
 
-    t0 = mono_ms();
+    /* Nanosecond clock → rtt_ms with microsecond resolution (e.g. 14.567). */
+    t0_ns = mono_ns();
     if (sendto(fd, &req, sizeof(req), 0, (struct sockaddr *)&dst,
                sizeof(dst)) < 0) {
         close(fd);
@@ -193,7 +195,7 @@ int cpe_agent_live_ping_tick(cpe_agent_t *a)
     pfd.events = POLLIN;
     if (poll(&pfd, 1, (int)timeout_ms) > 0 && (pfd.revents & POLLIN)) {
         nr = recvfrom(fd, rbuf, sizeof(rbuf), 0, NULL, NULL);
-        t1 = mono_ms();
+        t1_ns = mono_ns();
         if (nr > 0) {
             icmp = icmp_payload(rbuf, (size_t)nr, &icmp_len, is_raw);
             if (icmp && icmp_len >= 8 && icmp[0] == 0) {
@@ -201,8 +203,14 @@ int cpe_agent_live_ping_tick(cpe_agent_t *a)
                 if (rseq == seq) {
                     replied = 1;
                     loss = 0.0f;
-                    rtt_ms = (t1 >= t0) ? (double)(t1 - t0) : 0.0;
-                    (void)cpe_agent_feed_icmp_echo_reply(a, icmp, icmp_len, t1);
+                    if (t1_ns >= t0_ns) {
+                        rtt_ms = (double)(t1_ns - t0_ns) / 1000000.0;
+                    } else {
+                        rtt_ms = 0.0;
+                    }
+                    /* libnetdiag stats path still uses ms timestamps */
+                    (void)cpe_agent_feed_icmp_echo_reply(
+                        a, icmp, icmp_len, t1_ns / 1000000ull);
                 }
             }
         }

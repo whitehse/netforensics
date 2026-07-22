@@ -27,6 +27,7 @@ int cpe_perf_format_ndjson(const char *router_id, const cpe_perf_sample_t *s,
     meta = s->meta[0] ? s->meta : "{}";
 
     /* Keep meta as embedded JSON object (already validated small). */
+    /* %.3f → millisecond field with microsecond resolution (e.g. 14.567). */
     n = snprintf(buf, buflen,
                  "{\"type\":\"cpe_perf\",\"ts\":\"%s\",\"router_id\":\"%s\","
                  "\"probe\":\"%s\",\"target\":\"%s\",\"rtt_ms\":%.3f,"

@@ -324,6 +324,29 @@ static void test_live_ping_or_skip(void)
     cpe_agent_destroy(a);
 }
 
+static void test_demo_arping(void)
+{
+    cpe_agent_t *a = cpe_agent_create();
+    cpe_agent_config_t cfg;
+    cpe_agent_event_t ev;
+    cpe_perf_sample_t s;
+
+    assert(a);
+    cpe_agent_config_defaults(&cfg);
+    assert(cpe_agent_apply_config(a, &cfg) == 0);
+    while (cpe_agent_next_event(a, &ev) == 1) {
+    }
+    assert(cpe_agent_demo_arping(a, "192.168.1.1") == 0);
+    assert(cpe_agent_last_sample(a, &s) == 0);
+    assert(strcmp(s.probe, "arping") == 0);
+    assert(strcmp(s.target, "192.168.1.1") == 0);
+    assert(strstr(s.meta, "demo\":true") != NULL ||
+           strstr(s.meta, "\"demo\":true") != NULL);
+    assert(cpe_agent_spool_depth(a) >= 1);
+    cpe_agent_destroy(a);
+    printf("  PASS: demo_arping\n");
+}
+
 static void test_tls_stub_or_build(void)
 {
     char err[128];
@@ -401,6 +424,7 @@ int main(void)
     test_reload_config_override();
     test_sample_tick_demo();
     test_live_ping_or_skip();
+    test_demo_arping();
     test_tls_stub_or_build();
     test_spool_ensure_dir();
     test_https_mode_requires_url();

@@ -30,6 +30,8 @@ option(CPE_AGENT_WITH_HARNESS "Build libharness local tools (P2.6)" ON)
 option(CPE_AGENT_WITH_LIBSIM "Optional libsim class-B drive (P2.7b)" ON)
 option(CPE_AGENT_WITH_MBEDTLS "Optional mbedTLS HTTPS egress (F5)" ON)
 option(CPE_AGENT_WITH_LIBUV "Use libuv host loop (else poll/nanosleep)" ON)
+option(CPE_AGENT_WITH_LUA "Embed Lua 5.4 + linenoise REPL for tools / AI harness" ON)
+option(CPE_AGENT_STATIC "Static-link cpe_agent (field 32-bit OpenWrt time64 compat)" OFF)
 option(BUILD_FUZZ "Build libFuzzer harness (clang)" OFF)
 
 if(CPE_AGENT_FIELD)
@@ -184,6 +186,74 @@ if(CPE_AGENT_WITH_MBEDTLS)
     endif()
 endif()
 
+# --- embedded Lua 5.4 (optional; AI harness / REPL tools) ---
+set(CPE_HAVE_LUA 0)
+set(LUA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/lua-5.4.7")
+set(LINENOISE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/linenoise")
+if(CPE_AGENT_WITH_LUA)
+    if(EXISTS "${LUA_ROOT}/src/lua.h" AND EXISTS "${LINENOISE_ROOT}/linenoise.c")
+        set(LUA_LIB_SOURCES
+            ${LUA_ROOT}/src/lapi.c
+            ${LUA_ROOT}/src/lauxlib.c
+            ${LUA_ROOT}/src/lbaselib.c
+            ${LUA_ROOT}/src/lcode.c
+            ${LUA_ROOT}/src/lcorolib.c
+            ${LUA_ROOT}/src/lctype.c
+            ${LUA_ROOT}/src/ldblib.c
+            ${LUA_ROOT}/src/ldebug.c
+            ${LUA_ROOT}/src/ldo.c
+            ${LUA_ROOT}/src/ldump.c
+            ${LUA_ROOT}/src/lfunc.c
+            ${LUA_ROOT}/src/lgc.c
+            ${LUA_ROOT}/src/linit.c
+            ${LUA_ROOT}/src/liolib.c
+            ${LUA_ROOT}/src/llex.c
+            ${LUA_ROOT}/src/lmathlib.c
+            ${LUA_ROOT}/src/lmem.c
+            ${LUA_ROOT}/src/loadlib.c
+            ${LUA_ROOT}/src/lobject.c
+            ${LUA_ROOT}/src/lopcodes.c
+            ${LUA_ROOT}/src/loslib.c
+            ${LUA_ROOT}/src/lparser.c
+            ${LUA_ROOT}/src/lstate.c
+            ${LUA_ROOT}/src/lstring.c
+            ${LUA_ROOT}/src/lstrlib.c
+            ${LUA_ROOT}/src/ltable.c
+            ${LUA_ROOT}/src/ltablib.c
+            ${LUA_ROOT}/src/ltm.c
+            ${LUA_ROOT}/src/lundump.c
+            ${LUA_ROOT}/src/lutf8lib.c
+            ${LUA_ROOT}/src/lvm.c
+            ${LUA_ROOT}/src/lzio.c
+        )
+        add_library(lua_embed STATIC ${LUA_LIB_SOURCES})
+        target_include_directories(lua_embed PUBLIC ${LUA_ROOT}/src)
+        target_compile_definitions(lua_embed PUBLIC LUA_USE_POSIX)
+        # Lua upstream is not -Wpedantic clean under -Werror
+        target_compile_options(lua_embed PRIVATE
+            -Wno-pedantic -Wno-sign-conversion -Wno-unused-parameter)
+        if(NOT MSVC)
+            target_link_libraries(lua_embed PUBLIC m)
+        endif()
+
+        add_library(linenoise_embed STATIC ${LINENOISE_ROOT}/linenoise.c)
+        target_include_directories(linenoise_embed PUBLIC ${LINENOISE_ROOT})
+        target_compile_options(linenoise_embed PRIVATE
+            -Wno-pedantic -Wno-sign-conversion -Wno-unused-parameter
+            -Wno-missing-field-initializers)
+
+        set(CPE_HAVE_LUA 1)
+        message(STATUS "  Lua        embedded ${LUA_ROOT} + linenoise")
+    else()
+        message(WARNING
+            "CPE_AGENT_WITH_LUA=ON but third_party/lua-5.4.7 or linenoise missing; "
+            "disabling Lua")
+        set(CPE_AGENT_WITH_LUA OFF)
+    endif()
+else()
+    message(STATUS "  Lua        OFF")
+endif()
+
 # --- CPE agent (Track 2 + field path) ---
 set(CPE_AGENT_SOURCES
     agent/host_alloc.c
@@ -193,8 +263,10 @@ set(CPE_AGENT_SOURCES
     agent/agent_core.c
     agent/agent_fuzz.c
     agent/live_ping.c
+    agent/live_arping.c
     agent/spool_util.c
     agent/tls_egress.c
+    agent/lua_bind.c
 )
 if(CPE_HAVE_LIBUV)
     list(APPEND CPE_AGENT_SOURCES agent/agent_loop.c)
@@ -206,6 +278,9 @@ if(CPE_HAVE_HARNESS)
 endif()
 if(CPE_HAVE_LIBSIM)
     list(APPEND CPE_AGENT_SOURCES agent/agent_sim.c)
+endif()
+if(CPE_HAVE_LUA)
+    list(APPEND CPE_AGENT_SOURCES agent/lua_repl.c)
 endif()
 
 add_library(cpe_agent_lib STATIC ${CPE_AGENT_SOURCES})
@@ -237,12 +312,26 @@ if(CPE_HAVE_MBEDTLS)
         ${MBEDTLS_LIBRARY} ${MBEDX509_LIBRARY} ${MBEDCRYPTO_LIBRARY})
     target_compile_definitions(cpe_agent_lib PUBLIC CPE_AGENT_HAVE_MBEDTLS=1)
 endif()
+if(CPE_HAVE_LUA)
+    target_link_libraries(cpe_agent_lib PUBLIC lua_embed linenoise_embed)
+    target_compile_definitions(cpe_agent_lib PUBLIC CPE_AGENT_HAVE_LUA=1)
+    target_include_directories(cpe_agent_lib PRIVATE
+        ${LUA_ROOT}/src ${LINENOISE_ROOT})
+endif()
 
 add_executable(forensicsd cpe/forensicsd.c)
 target_link_libraries(forensicsd PRIVATE netforensics_core)
 
 add_executable(cpe_agent agent/main.c)
 target_link_libraries(cpe_agent PRIVATE cpe_agent_lib)
+if(CPE_AGENT_STATIC)
+    # Fully static so field boards with older musl (no __*time64) can run the binary.
+    target_link_options(cpe_agent PRIVATE -static)
+    # Prefer static libgcc when the toolchain provides it.
+    if(NOT MSVC)
+        target_link_options(cpe_agent PRIVATE -static-libgcc)
+    endif()
+endif()
 
 add_executable(ipfix_ingest_demo src/ipfix_ingest_main.c)
 target_link_libraries(ipfix_ingest_demo PRIVATE netforensics_core)
@@ -278,6 +367,10 @@ add_executable(test_cpe_agent_track2 tests/test_cpe_agent_track2.c)
 target_link_libraries(test_cpe_agent_track2 PRIVATE cpe_agent_lib)
 add_test(NAME cpe_agent_track2 COMMAND test_cpe_agent_track2)
 
+add_executable(test_cpe_agent_lua tests/test_cpe_agent_lua.c)
+target_link_libraries(test_cpe_agent_lua PRIVATE cpe_agent_lib)
+add_test(NAME cpe_agent_lua COMMAND test_cpe_agent_lua)
+
 # Smoke: forensicsd --demo still works (must not break)
 add_test(NAME forensicsd_demo
   COMMAND ${CMAKE_COMMAND} -E env
@@ -309,3 +402,5 @@ message(STATUS "  harness     ${CPE_HAVE_HARNESS}")
 message(STATUS "  libsim      ${CPE_HAVE_LIBSIM}")
 message(STATUS "  mbedTLS     ${CPE_HAVE_MBEDTLS}")
 message(STATUS "  field       ${CPE_AGENT_FIELD}")
+message(STATUS "  static      ${CPE_AGENT_STATIC}")
+message(STATUS "  Lua         ${CPE_HAVE_LUA}")

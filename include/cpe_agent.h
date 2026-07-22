@@ -90,6 +90,25 @@ int cpe_agent_demo_ping_tick(cpe_agent_t *a);
 int cpe_agent_live_ping_tick(cpe_agent_t *a);
 
 /**
+ * Live ARP request for an IPv4 target on a local interface.
+ * Emits cpe_perf with probe="arping"; meta includes mac + if when answered.
+ * @p ipv4_opt NULL → config demo_target; @p ifname_opt NULL → config arping_if
+ * or auto-detect (default route / br-lan / eth0).
+ * Needs AF_PACKET (CAP_NET_RAW). @return 0 ok (sample enqueued), -1 hard fail.
+ */
+int cpe_agent_arping(cpe_agent_t *a, const char *ipv4_opt,
+                     const char *ifname_opt);
+
+/** Live arping using config target + interface only. */
+int cpe_agent_live_arping_tick(cpe_agent_t *a);
+
+/**
+ * Synthetic arping sample (no privileges). Optional @p ipv4_opt target label.
+ */
+int cpe_agent_demo_arping(cpe_agent_t *a, const char *ipv4_opt);
+int cpe_agent_demo_arping_tick(cpe_agent_t *a);
+
+/**
  * One sample tick: demo or live based on config.demo_mode.
  * @return 0 ok, -1 on failure.
  */

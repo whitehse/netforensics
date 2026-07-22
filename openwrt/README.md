@@ -78,3 +78,36 @@ OpenWrt musl SDK: set `STAGING_DIR` + `TOOLCHAIN_DIR` and use
 `cmake/toolchains/openwrt-generic.cmake`. Avoid Debian
 `aarch64-linux-gnu` (glibc) for field images.
 
+### IPQ807x / ipq807x_32 (Qualcomm)
+
+OpenWrt target `qualcommax/ipq807x` is **aarch64**. Community/QSDK-style
+**ipq807x_32** images use 32-bit userspace (`arm_cortex-a7_neon-vfpv4`).
+
+```bash
+./scripts/cross_build_ipq807x.sh --fetch          # both ABIs
+./scripts/cross_build_ipq807x.sh --32             # ipq807x_32 only
+./scripts/cross_build_ipq807x.sh --64             # aarch64 only
+file build-ipq807x_32/cpe_agent deploy/ipq807x_32/cpe_agent
+# expect: ELF 32-bit ARM, interpreter /lib/ld-musl-armhf.so.1
+file build-ipq807x/cpe_agent deploy/ipq807x/cpe_agent
+# expect: ELF 64-bit aarch64, interpreter /lib/ld-musl-aarch64.so.1
+```
+
+| Variant | Package arch | Toolchain | Build dir |
+|---------|--------------|-----------|-----------|
+| `ipq807x` / `_64` | `aarch64_cortex-a53` | Bootlin aarch64 musl | `build-ipq807x/` |
+| `ipq807x_32` | `arm_cortex-a7_neon-vfpv4` | Bootlin armv7-eabihf musl **static** | `build-ipq807x_32/` |
+
+Field profile: `CPE_AGENT_FIELD=ON`, poll loop (no libuv), `MinSizeRel`.
+
+**ipq807x_32 time64 note:** Bootlin musl 1.2 redirects `nanosleep` /
+`clock_gettime` / `gmtime_r` to `__*time64` symbols. Older OpenWrt/QSDK musl
+only exports the classic names, which yields:
+
+```text
+Error relocating ./cpe_agent: __nanosleep_time64: symbol not found
+```
+
+The 32-bit field build therefore **static-links musl** (`CPE_AGENT_STATIC=ON`)
+so the binary does not depend on the board libc.
+

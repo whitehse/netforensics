@@ -15,7 +15,11 @@ demo:
   enabled: true         # true=synthetic; false=live ICMP (F4)
   target: "1.1.1.1"
   interval_ms: 5000
-  timeout_ms: 1000      # live probe wait
+  timeout_ms: 1000      # live ICMP/ARP probe wait
+
+# Optional L2 interface for arping (empty = auto: default-route if / br-lan / eth0)
+# arping:
+#   if: br-lan
 
 # egress:                       # only when emit.mode=https (F5 / mbedTLS)
 #   url: https://ingest.example/cpe/v1/events

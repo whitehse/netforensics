@@ -15,6 +15,7 @@ extern "C" {
 #define CPE_CFG_ROUTER_ID_MAX  64
 #define CPE_CFG_PATH_MAX       256
 #define CPE_CFG_TARGET_MAX     64
+#define CPE_CFG_IFACE_MAX      32
 #define CPE_CFG_MODE_MAX       16
 #define CPE_CFG_URL_MAX        256
 #define CPE_CFG_SPOOL_DEFAULT  256
@@ -29,9 +30,10 @@ typedef struct {
     char     spool_path[CPE_CFG_PATH_MAX];
     size_t   spool_max_lines;       /* 0 → default 256; hard cap 1024 */
     char     demo_target[CPE_CFG_TARGET_MAX]; /* probe target (demo + live) */
+    char     arping_if[CPE_CFG_IFACE_MAX];    /* L2 iface for arping; empty=auto */
     uint32_t demo_interval_ms;      /* sample period; 0 → 5000 */
     uint32_t sample_interval_ms;    /* alias; used by libuv timer */
-    uint32_t probe_timeout_ms;      /* live ICMP wait; 0 → 1000 */
+    uint32_t probe_timeout_ms;      /* live ICMP/ARP wait; 0 → 1000 */
     int      demo_mode;             /* 1 = synthetic; 0 = live ICMP (F4) */
     /* Optional HTTPS egress (F5); only when emit_mode=https */
     char     https_url[CPE_CFG_URL_MAX];

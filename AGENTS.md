@@ -38,6 +38,10 @@ ctest --test-dir build --output-on-failure
 # cpe_agent (perf) — Track 2
 ./build/cpe_agent --once --router-id cpe-lab-1
 ./build/cpe_agent --config config/cpe_agent.example.yaml
+# Lua REPL / tools (embedded Lua 5.4 + linenoise history)
+./build/cpe_agent --lua
+./build/cpe_agent --lua-eval "print(cpe.demo_ping().rtt_ms)"
+# Docs: docs/guides/cpe-agent-lua.md
 ```
 
 ## Directives

@@ -8,3 +8,7 @@ compile_commands.json
 
 # Staged LXC rootfs (rebuild via scripts/stage_lxc_rootfs.sh)
 deploy/prpl-lcm/netforensics-ee/rootfs/
+
+# Staged field binaries (rebuild via scripts/cross_build_ipq807x.sh)
+deploy/ipq807x/cpe_agent
+deploy/ipq807x_32/cpe_agent
