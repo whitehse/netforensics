@@ -187,6 +187,68 @@ int cpe_agent_last_wifi(const cpe_agent_t *a, cpe_wifi_snapshot_t *out);
 int cpe_agent_wifi_list_ifaces(char names[][CPE_WIFI_IFNAME_MAX],
                                size_t max_names);
 
+/** Max hops retained for one traceroute / mtr run. */
+#define CPE_TRACE_HOP_MAX 32
+
+/** Aggregated stats for one hop (TTL). */
+typedef struct {
+    int      hop; /**< 1-based TTL */
+    char     addr[CPE_PERF_TARGET_MAX];
+    uint32_t sent;
+    uint32_t replies;
+    uint32_t timeouts;
+    double   last_rtt_ms;
+    double   avg_rtt_ms;
+    double   min_rtt_ms;
+    double   max_rtt_ms;
+    float    loss; /**< 0.0 .. 1.0 */
+    int      reached_dest;
+} cpe_trace_hop_t;
+
+/** Full path discovery result (live traceroute / mtr). */
+typedef struct {
+    char            target[CPE_PERF_TARGET_MAX];
+    char            ts_iso[CPE_PERF_TS_MAX];
+    char            method[16]; /**< "udp" | "icmp" | "demo" */
+    int             max_ttl;
+    int             probes_per_hop;
+    int             hop_count;
+    int             reached;
+    double          dest_rtt_ms;
+    cpe_trace_hop_t hops[CPE_TRACE_HOP_MAX];
+} cpe_trace_result_t;
+
+/**
+ * Live traceroute (one probe per hop, stop when destination answers).
+ * UDP + IP_RECVERR preferred; ICMP echo + TTL as fallback.
+ * @p target_opt NULL → config target; @p max_ttl 0 → 30;
+ * @p timeout_ms 0 → config probe_timeout_ms.
+ * Stores last_trace, emits summary cpe_perf probe=traceroute.
+ * @return 0 ok (result filled even if incomplete), -1 hard fail (socket/target).
+ */
+int cpe_agent_traceroute(cpe_agent_t *a, const char *target_opt, int max_ttl,
+                         uint32_t timeout_ms, cpe_trace_result_t *out_opt);
+
+/**
+ * Live mtr-style multi-probe path stats (probes_per_hop at each TTL).
+ * @p probes_per_hop 0 → 3. Same storage / emit (probe=mtr).
+ */
+int cpe_agent_mtr(cpe_agent_t *a, const char *target_opt, int max_ttl,
+                  int probes_per_hop, uint32_t timeout_ms,
+                  cpe_trace_result_t *out_opt);
+
+/**
+ * Synthetic hop table (no network). C tests / fuzz only — not on Lua.
+ */
+int cpe_agent_demo_traceroute(cpe_agent_t *a, const char *target_opt,
+                              int max_ttl, cpe_trace_result_t *out_opt);
+
+/** Copy last traceroute/mtr result; @return 0 ok, -1 if none yet. */
+int cpe_agent_last_trace(const cpe_agent_t *a, cpe_trace_result_t *out);
+
+/** Install last traceroute result (host probes / tests). */
+int cpe_agent_set_last_trace(cpe_agent_t *a, const cpe_trace_result_t *r);
+
 /**
  * One sample tick: demo or live based on config.demo_mode.
  * @return 0 ok, -1 on failure.

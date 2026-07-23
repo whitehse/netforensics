@@ -128,27 +128,6 @@ static int l_set_target(lua_State *L)
     return 1;
 }
 
-static int l_set_demo(lua_State *L)
-{
-    cpe_agent_t *a = l_agent(L);
-    cpe_agent_config_t cfg;
-    int demo;
-
-    if (!a) {
-        return luaL_error(L, "no agent");
-    }
-    demo = lua_toboolean(L, 1);
-    cfg = *cpe_agent_config(a);
-    cfg.demo_mode = demo ? 1 : 0;
-    if (cpe_agent_apply_config(a, &cfg) != 0) {
-        drain_events(a);
-        return luaL_error(L, "apply_config failed for demo");
-    }
-    drain_events(a);
-    lua_pushboolean(L, 1);
-    return 1;
-}
-
 static int l_set_router_id(lua_State *L)
 {
     cpe_agent_t *a = l_agent(L);
@@ -198,27 +177,6 @@ static int l_set_interval(lua_State *L)
     return 1;
 }
 
-static int l_demo_ping(lua_State *L)
-{
-    cpe_agent_t *a = l_agent(L);
-    cpe_perf_sample_t s;
-
-    if (!a) {
-        return luaL_error(L, "no agent");
-    }
-    if (cpe_agent_demo_ping_tick(a) != 0) {
-        return luaL_error(L, "demo_ping failed");
-    }
-    (void)cpe_agent_emit_flush(a);
-    drain_events(a);
-    if (cpe_agent_last_sample(a, &s) != 0) {
-        lua_pushnil(L);
-        return 1;
-    }
-    push_sample(L, &s);
-    return 1;
-}
-
 static int l_live_ping(lua_State *L)
 {
     cpe_agent_t *a = l_agent(L);
@@ -256,31 +214,6 @@ static int l_live_ping(lua_State *L)
     }
     if (cpe_agent_live_ping_tick(a) != 0) {
         return luaL_error(L, "live_ping failed (ICMP socket / capability?)");
-    }
-    (void)cpe_agent_emit_flush(a);
-    drain_events(a);
-    if (cpe_agent_last_sample(a, &s) != 0) {
-        lua_pushnil(L);
-        return 1;
-    }
-    push_sample(L, &s);
-    return 1;
-}
-
-static int l_demo_arping(lua_State *L)
-{
-    cpe_agent_t *a = l_agent(L);
-    cpe_perf_sample_t s;
-    const char *target = NULL;
-
-    if (!a) {
-        return luaL_error(L, "no agent");
-    }
-    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
-        target = luaL_checkstring(L, 1);
-    }
-    if (cpe_agent_demo_arping(a, target) != 0) {
-        return luaL_error(L, "demo_arping failed");
     }
     (void)cpe_agent_emit_flush(a);
     drain_events(a);
@@ -527,26 +460,6 @@ static int l_wifi_list(lua_State *L)
     return 1;
 }
 
-static int l_demo_wifi_stats(lua_State *L)
-{
-    cpe_agent_t *a = l_agent(L);
-    cpe_wifi_snapshot_t snap;
-    int emit = 1;
-
-    if (!a) {
-        return luaL_error(L, "no agent");
-    }
-    if (lua_gettop(L) >= 1) {
-        emit = lua_toboolean(L, 1);
-    }
-    if (cpe_agent_demo_wifi_dump(a, emit, &snap) != 0) {
-        return luaL_error(L, "demo_wifi_dump failed");
-    }
-    drain_events(a);
-    push_wifi_snapshot(L, &snap);
-    return 1;
-}
-
 static int l_last_wifi(lua_State *L)
 {
     cpe_agent_t *a = l_agent(L);
@@ -563,16 +476,177 @@ static int l_last_wifi(lua_State *L)
     return 1;
 }
 
-static int l_sample(lua_State *L)
+static void push_trace_hop(lua_State *L, const cpe_trace_hop_t *h)
+{
+    lua_createtable(L, 0, 11);
+    lua_pushinteger(L, h->hop);
+    lua_setfield(L, -2, "hop");
+    lua_pushstring(L, h->addr);
+    lua_setfield(L, -2, "addr");
+    lua_pushinteger(L, (lua_Integer)h->sent);
+    lua_setfield(L, -2, "sent");
+    lua_pushinteger(L, (lua_Integer)h->replies);
+    lua_setfield(L, -2, "replies");
+    lua_pushinteger(L, (lua_Integer)h->timeouts);
+    lua_setfield(L, -2, "timeouts");
+    lua_pushnumber(L, h->last_rtt_ms);
+    lua_setfield(L, -2, "rtt_ms");
+    lua_pushnumber(L, h->avg_rtt_ms);
+    lua_setfield(L, -2, "avg_rtt_ms");
+    lua_pushnumber(L, h->min_rtt_ms);
+    lua_setfield(L, -2, "min_rtt_ms");
+    lua_pushnumber(L, h->max_rtt_ms);
+    lua_setfield(L, -2, "max_rtt_ms");
+    lua_pushnumber(L, (lua_Number)h->loss);
+    lua_setfield(L, -2, "loss");
+    lua_pushboolean(L, h->reached_dest ? 1 : 0);
+    lua_setfield(L, -2, "reached_dest");
+}
+
+static void push_trace_result(lua_State *L, const cpe_trace_result_t *tr)
+{
+    int i;
+
+    lua_createtable(L, 0, 9);
+    lua_pushstring(L, tr->target);
+    lua_setfield(L, -2, "target");
+    lua_pushstring(L, tr->ts_iso);
+    lua_setfield(L, -2, "ts");
+    lua_pushstring(L, tr->method);
+    lua_setfield(L, -2, "method");
+    lua_pushinteger(L, tr->max_ttl);
+    lua_setfield(L, -2, "max_ttl");
+    lua_pushinteger(L, tr->probes_per_hop);
+    lua_setfield(L, -2, "probes");
+    lua_pushinteger(L, tr->hop_count);
+    lua_setfield(L, -2, "hop_count");
+    lua_pushboolean(L, tr->reached ? 1 : 0);
+    lua_setfield(L, -2, "reached");
+    lua_pushnumber(L, tr->dest_rtt_ms);
+    lua_setfield(L, -2, "dest_rtt_ms");
+
+    lua_createtable(L, tr->hop_count, 0);
+    for (i = 0; i < tr->hop_count; i++) {
+        push_trace_hop(L, &tr->hops[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    lua_setfield(L, -2, "hops");
+}
+
+static int l_traceroute(lua_State *L)
 {
     cpe_agent_t *a = l_agent(L);
-    cpe_perf_sample_t s;
+    cpe_trace_result_t tr;
+    const char *target = NULL;
+    int max_ttl = 0;
+    uint32_t timeout_ms = 0;
 
     if (!a) {
         return luaL_error(L, "no agent");
     }
-    if (cpe_agent_sample_tick(a) != 0) {
-        return luaL_error(L, "sample_tick failed");
+    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
+        target = luaL_checkstring(L, 1);
+        if (strlen(target) >= CPE_CFG_TARGET_MAX) {
+            return luaL_error(L, "target too long");
+        }
+    }
+    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
+        max_ttl = (int)luaL_checkinteger(L, 2);
+    }
+    if (lua_gettop(L) >= 3 && !lua_isnil(L, 3)) {
+        lua_Integer t = luaL_checkinteger(L, 3);
+        if (t < 0 || t > 60000) {
+            return luaL_error(L, "timeout_ms out of range");
+        }
+        timeout_ms = (uint32_t)t;
+    }
+    if (cpe_agent_traceroute(a, target, max_ttl, timeout_ms, &tr) != 0) {
+        return luaL_error(
+            L, "traceroute failed (socket / target / privileges?)");
+    }
+    (void)cpe_agent_emit_flush(a);
+    drain_events(a);
+    push_trace_result(L, &tr);
+    return 1;
+}
+
+static int l_mtr(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_trace_result_t tr;
+    const char *target = NULL;
+    int max_ttl = 0;
+    int probes = 0;
+    uint32_t timeout_ms = 0;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
+        target = luaL_checkstring(L, 1);
+        if (strlen(target) >= CPE_CFG_TARGET_MAX) {
+            return luaL_error(L, "target too long");
+        }
+    }
+    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
+        probes = (int)luaL_checkinteger(L, 2);
+    }
+    if (lua_gettop(L) >= 3 && !lua_isnil(L, 3)) {
+        max_ttl = (int)luaL_checkinteger(L, 3);
+    }
+    if (lua_gettop(L) >= 4 && !lua_isnil(L, 4)) {
+        lua_Integer t = luaL_checkinteger(L, 4);
+        if (t < 0 || t > 60000) {
+            return luaL_error(L, "timeout_ms out of range");
+        }
+        timeout_ms = (uint32_t)t;
+    }
+    if (cpe_agent_mtr(a, target, max_ttl, probes, timeout_ms, &tr) != 0) {
+        return luaL_error(L, "mtr failed (socket / target / privileges?)");
+    }
+    (void)cpe_agent_emit_flush(a);
+    drain_events(a);
+    push_trace_result(L, &tr);
+    return 1;
+}
+
+static int l_last_trace(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_trace_result_t tr;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    if (cpe_agent_last_trace(a, &tr) != 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    push_trace_result(L, &tr);
+    return 1;
+}
+
+static int l_sample(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_perf_sample_t s;
+    cpe_agent_config_t cfg;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    /* Lua never uses synthetic demo ticks; reserved for C fuzz/dialectic. */
+    cfg = *cpe_agent_config(a);
+    if (cfg.demo_mode) {
+        cfg.demo_mode = 0;
+        if (cpe_agent_apply_config(a, &cfg) != 0) {
+            drain_events(a);
+            return luaL_error(L, "cannot disable demo for sample");
+        }
+        drain_events(a);
+    }
+    if (cpe_agent_live_ping_tick(a) != 0) {
+        return luaL_error(L, "sample failed (ICMP socket / capability?)");
     }
     (void)cpe_agent_emit_flush(a);
     drain_events(a);
@@ -725,19 +799,18 @@ static const luaL_Reg cpe_funcs[] = {
     {"help", l_help},
     {"config", l_config},
     {"set_target", l_set_target},
-    {"set_demo", l_set_demo},
     {"set_router_id", l_set_router_id},
     {"set_interval", l_set_interval},
     {"set_iface", l_set_iface},
     {"set_wifi_if", l_set_wifi_if},
-    {"demo_ping", l_demo_ping},
     {"live_ping", l_live_ping},
-    {"demo_arping", l_demo_arping},
     {"arping", l_arping},
+    {"traceroute", l_traceroute},
+    {"mtr", l_mtr},
+    {"last_trace", l_last_trace},
     {"wifi_list", l_wifi_list},
     {"wifi_state", l_wifi_state},
     {"wifi_stats", l_wifi_stats},
-    {"demo_wifi_stats", l_demo_wifi_stats},
     {"last_wifi", l_last_wifi},
     {"sample", l_sample},
     {"last_sample", l_last_sample},
@@ -772,21 +845,20 @@ void cpe_lua_print_help(FILE *fp)
             "  cpe.help()                 -- this text\n"
             "  cpe.config()               -- current config table\n"
             "  cpe.set_target(ip)         -- probe destination (ping/arping)\n"
-            "  cpe.set_demo(bool)         -- true=synthetic, false=live ICMP\n"
             "  cpe.set_router_id(id)\n"
             "  cpe.set_interval(ms)\n"
             "  cpe.set_iface(name)        -- L2 interface for arping\n"
             "  cpe.set_wifi_if(name)      -- Wi-Fi iface for nl80211 stats\n"
-            "  cpe.demo_ping()            -- synthetic ICMP sample → table\n"
             "  cpe.live_ping([ip])        -- live ICMP sample → table + emit\n"
-            "  cpe.demo_arping([ip])      -- synthetic ARP sample → table\n"
             "  cpe.arping([ip],[iface])   -- live ARP (CAP_NET_RAW) → table\n"
+            "  cpe.traceroute([ip],[max_ttl],[timeout_ms]) -- hop path → table\n"
+            "  cpe.mtr([ip],[probes],[max_ttl],[timeout_ms]) -- multi-probe hops\n"
+            "  cpe.last_trace()           -- last traceroute/mtr result or nil\n"
             "  cpe.wifi_list()            -- wireless-looking ifaces\n"
             "  cpe.wifi_state([iface])    -- operstate/up/mac/mtu table\n"
             "  cpe.wifi_stats([iface],[emit]) -- iface + station dump (nl80211)\n"
-            "  cpe.demo_wifi_stats([emit])-- synthetic station snapshot\n"
             "  cpe.last_wifi()            -- last Wi-Fi snapshot or nil\n"
-            "  cpe.sample()               -- one tick (demo or live per config)\n"
+            "  cpe.sample()               -- one live ICMP tick → table + emit\n"
             "  cpe.last_sample()          -- last sample table or nil\n"
             "  cpe.latency()              -- JSON string (get_local_latency)\n"
             "  cpe.ndjson()               -- last sample as cpe_perf line\n"
@@ -795,6 +867,7 @@ void cpe_lua_print_help(FILE *fp)
             "  cpe.reload([path])         -- re-read YAML\n"
             "  cpe.dofile(path)           -- run a tool script\n"
             "\n"
+            "Note: synthetic demo probes are not exposed to Lua (C fuzz / dialectic only).\n"
             "REPL: quit | exit | Ctrl-D to leave. Up-arrow recalls history.\n"
             "AI harness: register tool scripts that call cpe.* and return tables.\n");
 }

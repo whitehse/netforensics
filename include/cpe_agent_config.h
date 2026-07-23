@@ -18,13 +18,16 @@ extern "C" {
 #define CPE_CFG_IFACE_MAX      32
 #define CPE_CFG_MODE_MAX       16
 #define CPE_CFG_URL_MAX        256
+#define CPE_CFG_USER_MAX       64
+#define CPE_CFG_PASS_MAX       128
 #define CPE_CFG_SPOOL_DEFAULT  256
 
 typedef struct {
     char     router_id[CPE_CFG_ROUTER_ID_MAX];
     /**
-     * stdout | spool | https — production still NDJSON (ADR-002 / N-A05).
-     * https requires mbedTLS build (F5 / ADR-004).
+     * stdout | spool | http | https — production still NDJSON (ADR-002 / N-A05).
+     * http = plain TCP POST; https = mbedTLS when built (F5 / ADR-004).
+     * Both accept optional Basic Auth (egress.username / password).
      */
     char     emit_mode[CPE_CFG_MODE_MAX];
     char     spool_path[CPE_CFG_PATH_MAX];
@@ -36,11 +39,14 @@ typedef struct {
     uint32_t sample_interval_ms;    /* alias; used by libuv timer */
     uint32_t probe_timeout_ms;      /* live ICMP/ARP wait; 0 → 1000 */
     int      demo_mode;             /* 1 = synthetic; 0 = live ICMP (F4) */
-    /* Optional HTTPS egress (F5); only when emit_mode=https */
-    char     https_url[CPE_CFG_URL_MAX];
+    /* HTTP(S) egress → edgehost /api/v1/telemetry/events or Vector */
+    char     https_url[CPE_CFG_URL_MAX]; /* egress.url (http:// or https://) */
+    char     egress_user[CPE_CFG_USER_MAX];
+    char     egress_password[CPE_CFG_PASS_MAX];
     char     tls_ca_file[CPE_CFG_PATH_MAX];
     char     tls_cert_file[CPE_CFG_PATH_MAX];
     char     tls_key_file[CPE_CFG_PATH_MAX];
+    int      egress_tls_insecure; /* 1 = skip peer verify (default without CA) */
     /**
      * Set by cpe_agent_apply_config on success (not loaded from YAML).
      */

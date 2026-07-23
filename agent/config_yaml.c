@@ -188,9 +188,28 @@ static int apply_scalar(cpe_agent_config_t *c, const char *key, const char *val,
         }
         return 0;
     }
+    if (strcmp(key, "egress.username") == 0 ||
+        strcmp(key, "egress.user") == 0 || strcmp(key, "egress_user") == 0) {
+        if (copy_str(c->egress_user, sizeof(c->egress_user), val) != 0) {
+            FAIL("too long");
+        }
+        return 0;
+    }
+    if (strcmp(key, "egress.password") == 0 ||
+        strcmp(key, "egress_password") == 0) {
+        if (copy_str(c->egress_password, sizeof(c->egress_password), val) !=
+            0) {
+            FAIL("too long");
+        }
+        return 0;
+    }
     if (strcmp(key, "egress.ca_file") == 0 || strcmp(key, "tls_ca_file") == 0) {
         if (copy_str(c->tls_ca_file, sizeof(c->tls_ca_file), val) != 0) {
             FAIL("too long");
+        }
+        /* CA present → prefer verification unless tls_insecure set later */
+        if (c->tls_ca_file[0]) {
+            c->egress_tls_insecure = 0;
         }
         return 0;
     }
@@ -206,6 +225,14 @@ static int apply_scalar(cpe_agent_config_t *c, const char *key, const char *val,
         if (copy_str(c->tls_key_file, sizeof(c->tls_key_file), val) != 0) {
             FAIL("too long");
         }
+        return 0;
+    }
+    if (strcmp(key, "egress.tls_insecure") == 0 ||
+        strcmp(key, "egress.insecure") == 0) {
+        if (parse_bool(val, &iv) != 0) {
+            FAIL("invalid bool");
+        }
+        c->egress_tls_insecure = iv;
         return 0;
     }
 #undef FAIL
@@ -241,12 +268,19 @@ static const char *const g_paths[] = {
     "probe_timeout_ms",
     "egress.url",
     "https_url",
+    "egress.username",
+    "egress.user",
+    "egress_user",
+    "egress.password",
+    "egress_password",
     "egress.ca_file",
     "tls_ca_file",
     "egress.cert_file",
     "tls_cert_file",
     "egress.key_file",
     "tls_key_file",
+    "egress.tls_insecure",
+    "egress.insecure",
     NULL
 };
 

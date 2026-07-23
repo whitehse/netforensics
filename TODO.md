@@ -21,6 +21,7 @@
 - [x] **F2** SIGHUP YAML shadow reload (`cpe_agent_reload_config`) + CLI router override
 - [x] **F3** libuv timer re-arm after interval change; init/docs ADR-007
 - [x] **F4** Live ICMP probe path (CAP_NET_RAW / raw socket) behind `demo.enabled: false`
+- [x] **Traceroute / mtr** host-owned path discovery (UDP+IP_RECVERR / ICMP TTL) + Lua `cpe.traceroute` / `cpe.mtr` / `cpe.last_trace`
 - [x] **F5** Optional mbedTLS mTLS egress to gateway (ADR-004; soft dep; stub without libs)
 - [x] **F6** Shared spool dir helper with forensicsd; dual-daemon resource caps (MIPS/ARM)
 

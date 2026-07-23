@@ -10,7 +10,6 @@ local list = targets or {
   "8.8.8.8",
 }
 
-cpe.set_demo(false)
 local results = {}
 for _, ip in ipairs(list) do
   local ok, s = pcall(function()

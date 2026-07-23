@@ -42,6 +42,9 @@ struct cpe_agent {
     cpe_wifi_snapshot_t last_wifi;
     int                 has_last_wifi;
 
+    cpe_trace_result_t last_trace;
+    int                has_last_trace;
+
     char  (*spool)[CPE_SPOOL_LINE];
     size_t spool_cap;
     size_t spool_head;
@@ -408,6 +411,25 @@ int cpe_agent_last_wifi(const cpe_agent_t *a, cpe_wifi_snapshot_t *out)
     return 0;
 }
 
+int cpe_agent_set_last_trace(cpe_agent_t *a, const cpe_trace_result_t *r)
+{
+    if (!a || !r) {
+        return -1;
+    }
+    a->last_trace = *r;
+    a->has_last_trace = 1;
+    return 0;
+}
+
+int cpe_agent_last_trace(const cpe_agent_t *a, cpe_trace_result_t *out)
+{
+    if (!a || !out || !a->has_last_trace) {
+        return -1;
+    }
+    *out = a->last_trace;
+    return 0;
+}
+
 int cpe_agent_feed_icmp_echo_reply(cpe_agent_t *a, const uint8_t *icmp,
                                    size_t len, uint64_t ts_ms)
 {
@@ -564,14 +586,18 @@ int cpe_agent_emit_flush(cpe_agent_t *a)
     if (!a) {
         return -1;
     }
-    if (strcmp(a->cfg.emit_mode, "https") == 0) {
-        /* Drain ring into a single NDJSON body, then POST. */
+    if (strcmp(a->cfg.emit_mode, "https") == 0 ||
+        strcmp(a->cfg.emit_mode, "http") == 0) {
+        cpe_agent_http_opts_t hopts;
+
+        /* Drain ring into a single NDJSON body, then POST to edgehost/Vector. */
         if (a->spool_cnt == 0) {
             return 0;
         }
         body[0] = '\0';
         n = 0;
-        while (a->spool_cnt > 0 && body_len + CPE_NDJSON_LINE_MAX < sizeof(body)) {
+        while (a->spool_cnt > 0 &&
+               body_len + CPE_NDJSON_LINE_MAX < sizeof(body)) {
             size_t L = strlen(a->spool[a->spool_head]);
             if (body_len + L + 2 >= sizeof(body)) {
                 break;
@@ -584,15 +610,20 @@ int cpe_agent_emit_flush(cpe_agent_t *a)
             a->spool_cnt--;
             n++;
         }
+        memset(&hopts, 0, sizeof(hopts));
+        hopts.username =
+            a->cfg.egress_user[0] ? a->cfg.egress_user : NULL;
+        hopts.password = a->cfg.egress_password;
+        hopts.ca_file =
+            a->cfg.tls_ca_file[0] ? a->cfg.tls_ca_file : NULL;
+        hopts.cert_file =
+            a->cfg.tls_cert_file[0] ? a->cfg.tls_cert_file : NULL;
+        hopts.key_file =
+            a->cfg.tls_key_file[0] ? a->cfg.tls_key_file : NULL;
+        hopts.tls_insecure = a->cfg.egress_tls_insecure ? 1 : 0;
         err[0] = '\0';
-        if (cpe_agent_tls_post(a->cfg.https_url, body, body_len,
-                               a->cfg.tls_ca_file[0] ? a->cfg.tls_ca_file
-                                                     : NULL,
-                               a->cfg.tls_cert_file[0] ? a->cfg.tls_cert_file
-                                                       : NULL,
-                               a->cfg.tls_key_file[0] ? a->cfg.tls_key_file
-                                                      : NULL,
-                               err, sizeof(err)) != 0) {
+        if (cpe_agent_http_post(a->cfg.https_url, body, body_len, &hopts, err,
+                                sizeof(err)) != 0) {
             return -1;
         }
         return n;

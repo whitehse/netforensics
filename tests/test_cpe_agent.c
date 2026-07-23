@@ -421,7 +421,35 @@ static void test_https_mode_requires_url(void)
     snprintf(c.emit_mode, sizeof(c.emit_mode), "https");
     c.https_url[0] = '\0';
     assert(cpe_agent_config_validate(&c, err, sizeof(err)) == -1);
-    printf("  PASS: https mode requires url\n");
+
+    snprintf(c.emit_mode, sizeof(c.emit_mode), "http");
+    assert(cpe_agent_config_validate(&c, err, sizeof(err)) == -1);
+
+    snprintf(c.https_url, sizeof(c.https_url),
+             "http://127.0.0.1:18080/api/v1/telemetry/events");
+    snprintf(c.egress_user, sizeof(c.egress_user), "cpe_ingest");
+    snprintf(c.egress_password, sizeof(c.egress_password), "secret");
+    assert(cpe_agent_config_validate(&c, err, sizeof(err)) == 0);
+    printf("  PASS: http/https mode requires url; user/pass allowed\n");
+}
+
+static void test_http_post_url_parse(void)
+{
+    char err[128];
+
+    /* Plain HTTP to closed port should fail cleanly (no crash). */
+    err[0] = '\0';
+    {
+        cpe_agent_http_opts_t o;
+        memset(&o, 0, sizeof(o));
+        o.username = "u";
+        o.password = "p";
+        assert(cpe_agent_http_post("http://127.0.0.1:1/api/v1/telemetry/events",
+                                   "{\"type\":\"cpe_perf\"}\n", 20, &o, err,
+                                   sizeof(err)) == -1);
+        assert(err[0] != '\0');
+    }
+    printf("  PASS: http_post connect fail + basic auth path\n");
 }
 
 static void test_spool_hard_cap(void)
@@ -433,6 +461,58 @@ static void test_spool_hard_cap(void)
     c.spool_max_lines = CPE_SPOOL_MAX_LINES_HARD + 1;
     assert(cpe_agent_config_validate(&c, err, sizeof(err)) == -1);
     printf("  PASS: spool hard cap\n");
+}
+
+static void test_demo_traceroute(void)
+{
+    cpe_agent_t *a = cpe_agent_create();
+    cpe_trace_result_t tr;
+    cpe_trace_result_t last;
+    cpe_perf_sample_t s;
+
+    assert(a);
+    assert(cpe_agent_demo_traceroute(a, "9.9.9.9", 5, &tr) == 0);
+    assert(tr.hop_count >= 1);
+    assert(tr.reached == 1);
+    assert(strcmp(tr.method, "demo") == 0);
+    assert(tr.hops[tr.hop_count - 1].reached_dest == 1);
+    assert(cpe_agent_last_trace(a, &last) == 0);
+    assert(last.hop_count == tr.hop_count);
+    assert(cpe_agent_last_sample(a, &s) == 0);
+    assert(strcmp(s.probe, "traceroute") == 0);
+    assert(strstr(s.meta, "demo") != NULL);
+    cpe_agent_destroy(a);
+    printf("  PASS: demo_traceroute\n");
+}
+
+static void test_live_traceroute_or_skip(void)
+{
+    cpe_agent_t *a = cpe_agent_create();
+    cpe_agent_config_t cfg;
+    cpe_trace_result_t tr;
+    int rc;
+
+    assert(a);
+    cfg = *cpe_agent_config(a);
+    cfg.demo_mode = 0;
+    cfg.probe_timeout_ms = 500;
+    snprintf(cfg.demo_target, sizeof(cfg.demo_target), "127.0.0.1");
+    assert(cpe_agent_apply_config(a, &cfg) == 0);
+    while (cpe_agent_next_event(a, &(cpe_agent_event_t){0}) == 1) {
+    }
+
+    rc = cpe_agent_traceroute(a, "127.0.0.1", 3, 500, &tr);
+    if (rc != 0) {
+        printf("  SKIP: live traceroute (socket/privileges unavailable)\n");
+        cpe_agent_destroy(a);
+        return;
+    }
+    assert(tr.hop_count >= 1);
+    assert(tr.hop_count <= 3);
+    assert(cpe_agent_last_trace(a, &tr) == 0);
+    printf("  PASS: live traceroute to 127.0.0.1 hops=%d reached=%d method=%s\n",
+           tr.hop_count, tr.reached, tr.method);
+    cpe_agent_destroy(a);
 }
 
 int main(void)
@@ -452,9 +532,12 @@ int main(void)
     test_live_ping_or_skip();
     test_demo_arping();
     test_demo_wifi();
+    test_demo_traceroute();
+    test_live_traceroute_or_skip();
     test_tls_stub_or_build();
     test_spool_ensure_dir();
     test_https_mode_requires_url();
+    test_http_post_url_parse();
     test_spool_hard_cap();
     printf("all passed\n");
     return 0;

@@ -26,6 +26,7 @@ void cpe_agent_config_defaults(cpe_agent_config_t *c)
     c->sample_interval_ms = 5000;
     c->probe_timeout_ms = 1000;
     c->demo_mode = 1;
+    c->egress_tls_insecure = 1; /* soft TLS until ca_file is set */
     c->generation = 0;
 }
 
@@ -46,9 +47,11 @@ int cpe_agent_config_validate(const cpe_agent_config_t *c, char *err,
     }
     if (strcmp(c->emit_mode, "stdout") != 0 &&
         strcmp(c->emit_mode, "spool") != 0 &&
+        strcmp(c->emit_mode, "http") != 0 &&
         strcmp(c->emit_mode, "https") != 0) {
         if (err && err_len) {
-            snprintf(err, err_len, "emit.mode must be stdout|spool|https");
+            snprintf(err, err_len,
+                     "emit.mode must be stdout|spool|http|https");
         }
         return -1;
     }
@@ -58,9 +61,12 @@ int cpe_agent_config_validate(const cpe_agent_config_t *c, char *err,
         }
         return -1;
     }
-    if (strcmp(c->emit_mode, "https") == 0 && c->https_url[0] == '\0') {
+    if ((strcmp(c->emit_mode, "http") == 0 ||
+         strcmp(c->emit_mode, "https") == 0) &&
+        c->https_url[0] == '\0') {
         if (err && err_len) {
-            snprintf(err, err_len, "emit.mode=https requires egress.url");
+            snprintf(err, err_len,
+                     "emit.mode=%s requires egress.url", c->emit_mode);
         }
         return -1;
     }

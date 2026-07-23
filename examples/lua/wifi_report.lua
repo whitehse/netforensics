@@ -1,28 +1,15 @@
--- Wi-Fi state + station report.
+-- Wi-Fi state + station report (live nl80211).
 --   ./cpe_agent --lua-file examples/lua/wifi_report.lua
--- Live dump needs nl80211 (often CAP_NET_ADMIN). Force demo:
---   demo = true
-
-local use_demo = demo
-if use_demo == nil then
-  use_demo = false
-end
+-- Live dump needs nl80211 (often CAP_NET_ADMIN). Optional:
+--   iface = "wlan0"
 
 print("ifaces:", table.concat(cpe.wifi_list(), ", "))
 
-local w
-if use_demo then
-  w = cpe.demo_wifi_stats(true)
-else
-  local ok, res = pcall(function()
-    return cpe.wifi_stats(iface, true)
-  end)
-  if ok then
-    w = res
-  else
-    print("live wifi_stats failed, falling back to demo:", res)
-    w = cpe.demo_wifi_stats(true)
-  end
+local ok, w = pcall(function()
+  return cpe.wifi_stats(iface, true)
+end)
+if not ok then
+  error("wifi_stats failed: " .. tostring(w))
 end
 
 local i = w.iface

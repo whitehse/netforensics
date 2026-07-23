@@ -40,8 +40,11 @@ ctest --test-dir build --output-on-failure
 ./build/cpe_agent --config config/cpe_agent.example.yaml
 # Lua REPL / tools (embedded Lua 5.4 + linenoise history)
 ./build/cpe_agent --lua
-./build/cpe_agent --lua-eval "print(cpe.demo_ping().rtt_ms)"
+./build/cpe_agent --lua-eval "print(cpe.live_ping('127.0.0.1').rtt_ms)"
+./build/cpe_agent --lua-eval "local t=cpe.traceroute('1.1.1.1',15); print(t.reached, t.hop_count)"
+./build/cpe_agent --lua-file examples/lua/traceroute_report.lua
 # Docs: docs/guides/cpe-agent-lua.md
+# Note: synthetic demo probes are C-only (fuzz/dialectic); not on the Lua cpe.* table.
 ```
 
 ## Directives
@@ -49,7 +52,7 @@ ctest --test-dir build --output-on-failure
 - **Must** keep netlink sockets and ClickHouse HTTP out of pure libraries; libraries only parse buffers.
 - **Must** use `nfct` forensics 5-tuple fields for CPE NAT correlation keys.
 - **Must not** break `forensicsd` when extending the agent.
-- **Must** emit CPE performance as **NDJSON** `type=cpe_perf` → Vector → `forensics.cpe_perf_samples` (N-A05 / ADR-005). **No** production ClickHouse client on CPE.
+- **Must** emit CPE performance as **NDJSON** `type=cpe_perf` → Vector **or** edgehost `POST /api/v1/telemetry/events` → ClickHouse (N-A05 / ADR-005). **No** production ClickHouse client on CPE. HTTP egress supports optional Basic Auth; TLS is optional (mbedTLS). See `docs/guides/cpe-agent-edgehost-pipeline.md`.
 - **Must** use **libuv** for the agent loop (class B); not io_uring on OpenWrt baseline.
 - **Prefer** mbedTLS if/when agent TLS is needed (ADR-004); edgehost uses OpenSSL separately.
 - **Local tool**: `get_local_latency` via libharness registration + `cpe_harness_invoke_local` (P2.6).
