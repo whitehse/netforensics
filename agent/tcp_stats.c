@@ -266,13 +266,57 @@ static void iso_now(char *out, size_t n)
         return;
     }
     sec = ts.tv_sec;
-    ms = (int)(ts.tv_nsec / 1000000);
+    ms = (int)(ts.tv_nsec / 1000000L);
+    if (ms < 0) {
+        ms = 0;
+    } else if (ms > 999) {
+        ms = 999;
+    }
     if (!gmtime_r(&sec, &tm)) {
         snprintf(out, n, "1970-01-01T00:00:00.000Z");
         return;
     }
-    snprintf(out, n, "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", tm.tm_year + 1900,
-             tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, ms);
+    /* Fixed 24-char ISO-8601 + NUL; clamp fields so -Wformat-truncation is quiet. */
+    {
+        int y = tm.tm_year + 1900;
+        int mo = tm.tm_mon + 1;
+        int d = tm.tm_mday;
+        int h = tm.tm_hour;
+        int mi = tm.tm_min;
+        int s = tm.tm_sec;
+        if (y < 0) {
+            y = 0;
+        } else if (y > 9999) {
+            y = 9999;
+        }
+        if (mo < 1) {
+            mo = 1;
+        } else if (mo > 12) {
+            mo = 12;
+        }
+        if (d < 1) {
+            d = 1;
+        } else if (d > 31) {
+            d = 31;
+        }
+        if (h < 0) {
+            h = 0;
+        } else if (h > 23) {
+            h = 23;
+        }
+        if (mi < 0) {
+            mi = 0;
+        } else if (mi > 59) {
+            mi = 59;
+        }
+        if (s < 0) {
+            s = 0;
+        } else if (s > 60) {
+            s = 60;
+        }
+        snprintf(out, n, "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", y, mo, d, h, mi,
+                 s, ms);
+    }
 }
 
 static uint64_t mono_ms(void)

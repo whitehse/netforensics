@@ -35,16 +35,18 @@ edgehost dual-writes telemetry into ClickHouse (and other backends).
 ### 1a. edgehost side
 
 ```yaml
-# edgehost config fragment
+# edgehost config fragment (SPA :18080; CH CPE proxy :18082; PG proxy :18081)
 plugins:
   clickhouse:
     enabled: true
-    host: 127.0.0.1
+    host: 127.0.0.1            # edgehost → CH direct (loopback)
     port: 8123
     database: edgehost
     events_table: edgehost.e7_netconf_events
     tcp_stats_table: edgehost.cpe_tcp_stats
     telemetry_proxy: true
+    proxy_listen_host: 0.0.0.0
+    proxy_listen_port: 18082  # host listen for CPE telemetry
     telemetry_user: cpe_ingest
     telemetry_password: "change-me"
 ```
@@ -52,12 +54,12 @@ plugins:
 ```bash
 clickhouse-client --multiquery < edgehost/sql/clickhouse/001_e7_netconf_events.sql
 clickhouse-client --multiquery < edgehost/sql/clickhouse/002_cpe_tcp_stats.sql
-# start edgehost with the YAML above
+# start edgehost with the YAML above (e.g. ./scripts/run-status-map-junos.sh)
 ```
 
 ### 1b. CPE agent YAML (field)
 
-`/etc/cpe_agent/cpe_agent.yaml`:
+Ship-ready: `config/cpe_agent.field.yaml` · OpenWrt: `openwrt/cpe-agent/files/cpe_agent.yaml`.
 
 ```yaml
 router_id: cpe-42
@@ -66,28 +68,27 @@ emit:
   mode: http          # or https with mbedTLS
 
 egress:
-  url: "http://edgehost.example:18080/api/v1/telemetry/events"
+  # ClickHouse proxy (VIP :18082; host listen proxy_listen_port 18082)
+  url: "http://174.128.129.0:18082/api/v1/telemetry/events"
   username: cpe_ingest
   password: "change-me"
 
 demo:
-  enabled: false      # live ICMP
+  enabled: false      # live ICMP off for pure TCP-stats path
   target: "1.1.1.1"
-  interval_ms: 60000  # sample every 60s
+  interval_ms: 60000
   timeout_ms: 1000
 
 tcp_stats:
   enabled: true
-  nflog_group: 5
+  nflog_group: 5      # interface nflog:5
+  nflog_size: 60
   emit_interval_ms: 30000
+  emit_top_n: 20
   prefix_len: 24
 
 ipc:
   socket: /var/run/netforensics/cpe_agent.sock
-
-# Optional: document edgehost OpenAI proxy for operators / future tools
-# proxies:
-#   openai_url: "http://edgehost.example:18080/api/v1/openai/..."
 ```
 
 ### 1c. Host NFLOG rules (for TCP stats)
@@ -134,9 +135,29 @@ host netns (ADR-009).
 Without `--once` / `--lua`, the process **runs until SIGTERM** and keeps sampling
 + flushing to edgehost.
 
-### 1e. Verify pipeline
+### 1e. On-demand Lua (daemon + human client)
+
+Live NFLOG aggregates stay in the daemon. Query them without a CH client on the CPE:
 
 ```bash
+cpe_ctl status
+cpe_ctl tcp_stats
+cpe_ctl tcp_by_ip
+cpe_ctl tcp_by_prefix
+cpe_ctl --lua
+cpe_ctl --lua-eval "local s=cpe.tcp_stats(); print(s.syn, s.rst, s.loss_hint)"
+
+# Same cpe.* API on the agent binary
+cpe_agent --config /etc/cpe_agent/cpe_agent.yaml \
+  --lua-file examples/lua/tcp_stats_report.lua
+```
+
+### 1f. Verify pipeline
+
+```bash
+# Lab helper
+./scripts/run-cpe-daemon-lab.sh
+
 # On CPE
 cpe_ctl status
 cpe_ctl tcp_stats

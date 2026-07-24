@@ -57,7 +57,7 @@ field_cmake() {
     -DBUILD_TESTING=OFF \
     "$@"
   cmake --build "${build}" -j"$(nproc 2>/dev/null || echo 2)" \
-    --target cpe_agent
+    --target cpe_agent cpe_ctl
   # Strip for flash budgets (keep unstripped in build tree copy if strip fails)
   if command -v "${STRIP:-}" >/dev/null 2>&1; then
     :
@@ -85,8 +85,12 @@ field_cmake() {
       fi
     done
   fi
-  if [[ -n "${strip_bin}" && -x "${build}/cpe_agent" ]]; then
-    "${strip_bin}" "${build}/cpe_agent" 2>/dev/null || true
+  if [[ -n "${strip_bin}" ]]; then
+    for b in cpe_agent cpe_ctl; do
+      if [[ -x "${build}/${b}" ]]; then
+        "${strip_bin}" "${build}/${b}" 2>/dev/null || true
+      fi
+    done
   fi
 }
 
@@ -175,12 +179,17 @@ if [[ "${DO32}" -eq 1 ]]; then
     -DCPE_AGENT_STATIC=ON
   # Use matching strip
   STRIP32="${tc32}/bin/arm-buildroot-linux-musleabihf-strip"
-  [[ -x "${STRIP32}" ]] && "${STRIP32}" "${BUILD32}/cpe_agent" || true
+  if [[ -x "${STRIP32}" ]]; then
+    "${STRIP32}" "${BUILD32}/cpe_agent" "${BUILD32}/cpe_ctl" 2>/dev/null || true
+  fi
   echo
   verify_field_bin "${BUILD32}/cpe_agent" "ipq807x_32 cpe_agent" "ARM" 1
+  verify_field_bin "${BUILD32}/cpe_ctl" "ipq807x_32 cpe_ctl" "ARM" 1
   mkdir -p "${ROOT}/deploy/ipq807x_32"
   cp -f "${BUILD32}/cpe_agent" "${ROOT}/deploy/ipq807x_32/cpe_agent"
+  cp -f "${BUILD32}/cpe_ctl" "${ROOT}/deploy/ipq807x_32/cpe_ctl"
   echo "Staged: deploy/ipq807x_32/cpe_agent"
+  echo "Staged: deploy/ipq807x_32/cpe_ctl"
   echo
 fi
 
@@ -201,20 +210,27 @@ if [[ "${DO64}" -eq 1 ]]; then
     "${ROOT}/cmake/toolchains/aarch64-bootlin.cmake" \
     -DBOOTLIN_TOOLCHAIN="${tc64}"
   STRIP64="${tc64}/bin/aarch64-buildroot-linux-musl-strip"
-  [[ -x "${STRIP64}" ]] && "${STRIP64}" "${BUILD64}/cpe_agent" || true
+  if [[ -x "${STRIP64}" ]]; then
+    "${STRIP64}" "${BUILD64}/cpe_agent" "${BUILD64}/cpe_ctl" 2>/dev/null || true
+  fi
   echo
   verify_field_bin "${BUILD64}/cpe_agent" "ipq807x cpe_agent" "AArch64" 0
+  verify_field_bin "${BUILD64}/cpe_ctl" "ipq807x cpe_ctl" "AArch64" 0
   mkdir -p "${ROOT}/deploy/ipq807x"
   cp -f "${BUILD64}/cpe_agent" "${ROOT}/deploy/ipq807x/cpe_agent"
+  cp -f "${BUILD64}/cpe_ctl" "${ROOT}/deploy/ipq807x/cpe_ctl"
   echo "Staged: deploy/ipq807x/cpe_agent"
+  echo "Staged: deploy/ipq807x/cpe_ctl"
   echo
 fi
 
 echo "IPQ807x field build OK"
 echo "Artifacts:"
 if [[ "${DO32}" -eq 1 ]]; then
-  ls -la "${BUILD32}/cpe_agent" "${ROOT}/deploy/ipq807x_32/cpe_agent"
+  ls -la "${BUILD32}/cpe_agent" "${BUILD32}/cpe_ctl" \
+    "${ROOT}/deploy/ipq807x_32/cpe_agent" "${ROOT}/deploy/ipq807x_32/cpe_ctl"
 fi
 if [[ "${DO64}" -eq 1 ]]; then
-  ls -la "${BUILD64}/cpe_agent" "${ROOT}/deploy/ipq807x/cpe_agent"
+  ls -la "${BUILD64}/cpe_agent" "${BUILD64}/cpe_ctl" \
+    "${ROOT}/deploy/ipq807x/cpe_agent" "${ROOT}/deploy/ipq807x/cpe_ctl"
 fi

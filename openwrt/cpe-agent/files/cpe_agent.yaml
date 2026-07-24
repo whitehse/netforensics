@@ -1,33 +1,34 @@
-# Field-oriented defaults (OpenWrt). Override router_id via --router-id in init.
+# OpenWrt field defaults — NFLOG TCP stats → edgehost ClickHouse proxy.
+# Override router_id via --router-id in the init script (%H hostname).
 
 router_id: cpe
 
 emit:
-  mode: stdout
-  # mode: spool
-  # path: /var/spool/netforensics/cpe_perf.ndjson
-  # mode: https   # requires mbedTLS build + egress.* (optional F5)
-  # egress:
-  #   url: https://ingest.example/cpe/v1/events
-  #   ca_file: /etc/cpe_agent/ca.crt
-  #   cert_file: /etc/cpe_agent/client.crt
-  #   key_file: /etc/cpe_agent/client.key
+  mode: http
+
+egress:
+  # ClickHouse proxy (CPE VIP after firewall DNAT → edgehost telemetry).
+  url: "http://174.128.129.0:18082/api/v1/telemetry/events"
+  username: cpe_ingest
+  password: "change-me"
 
 spool:
-  max_lines: 128   # OpenWrt soft cap (hard max 1024)
+  max_lines: 128
 
 demo:
-  # false = live ICMP (F4; CAP_NET_RAW if DGRAM ICMP unavailable)
-  enabled: true
+  enabled: false
   target: "1.1.1.1"
   interval_ms: 60000
   timeout_ms: 1000
 
-# TCP NFLOG stats (host iptables NFLOG group; needs CAP_NET_ADMIN)
-# tcp_stats:
-#   enabled: true
-#   nflog_group: 5
-#   nflog_size: 60
-#   emit_interval_ms: 30000
-#   emit_top_n: 15
-#   prefix_len: 24
+tcp_stats:
+  enabled: true
+  nflog_group: 5
+  nflog_size: 60
+  emit_interval_ms: 30000
+  emit_top_n: 15
+  prefix_len: 24
+
+ipc:
+  socket: /var/run/netforensics/cpe_agent.sock
+

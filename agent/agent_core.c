@@ -637,26 +637,33 @@ int cpe_agent_emit_flush(cpe_agent_t *a)
     if (strcmp(a->cfg.emit_mode, "https") == 0 ||
         strcmp(a->cfg.emit_mode, "http") == 0) {
         cpe_agent_http_opts_t hopts;
+        size_t head;
+        size_t i;
 
-        /* Drain ring into a single NDJSON body, then POST to edgehost/Vector. */
+        /* Copy ring into a single NDJSON body; only advance after POST succeeds. */
         if (a->spool_cnt == 0) {
             return 0;
         }
         body[0] = '\0';
         n = 0;
-        while (a->spool_cnt > 0 &&
-               body_len + CPE_NDJSON_LINE_MAX < sizeof(body)) {
-            size_t L = strlen(a->spool[a->spool_head]);
+        body_len = 0;
+        head = a->spool_head;
+        for (i = 0; i < a->spool_cnt &&
+                    body_len + CPE_NDJSON_LINE_MAX < sizeof(body);
+             i++) {
+            size_t idx = (head + i) % a->spool_cap;
+            size_t L = strlen(a->spool[idx]);
             if (body_len + L + 2 >= sizeof(body)) {
                 break;
             }
-            memcpy(body + body_len, a->spool[a->spool_head], L);
+            memcpy(body + body_len, a->spool[idx], L);
             body_len += L;
             body[body_len++] = '\n';
             body[body_len] = '\0';
-            a->spool_head = (a->spool_head + 1) % a->spool_cap;
-            a->spool_cnt--;
             n++;
+        }
+        if (n == 0) {
+            return -1;
         }
         memset(&hopts, 0, sizeof(hopts));
         hopts.username =
@@ -672,8 +679,14 @@ int cpe_agent_emit_flush(cpe_agent_t *a)
         err[0] = '\0';
         if (cpe_agent_http_post(a->cfg.https_url, body, body_len, &hopts, err,
                                 sizeof(err)) != 0) {
+            fprintf(stderr, "cpe_agent: http emit failed url=%s: %s\n",
+                    a->cfg.https_url[0] ? a->cfg.https_url : "(empty)",
+                    err[0] ? err : "unknown error");
             return -1;
         }
+        /* POST ok — drop the lines we sent. */
+        a->spool_head = (a->spool_head + (size_t)n) % a->spool_cap;
+        a->spool_cnt -= (size_t)n;
         return n;
     }
     if (strcmp(a->cfg.emit_mode, "spool") == 0) {

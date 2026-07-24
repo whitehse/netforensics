@@ -26,40 +26,34 @@ demo:
 #   if: wlan0
 
 # ---------------------------------------------------------------------------
-# HTTP(S) egress → edgehost telemetry proxy (or Vector http_server)
-# See docs/guides/cpe-agent-edgehost-pipeline.md
+# Field path: NFLOG:5 TCP stats → edgehost ClickHouse proxy
+# Ready-made: config/cpe_agent.field.yaml · lab: cpe_agent.lab-edgehost.yaml
+# See docs/guides/cpe-agent-daemon.md · cpe-agent-tcp-stats.md
 # ---------------------------------------------------------------------------
 # emit:
-#   mode: http            # plain HTTP; use https when mbedTLS is linked
+#   mode: http
 # egress:
-#   url: "http://edgehost.example:18080/api/v1/telemetry/events"
+#   url: "http://174.128.129.0:18082/api/v1/telemetry/events"
 #   username: cpe_ingest
 #   password: "change-me"
-#   # Optional TLS (mode=https):
-#   # ca_file: /etc/cpe_agent/ca.crt
-#   # cert_file: /etc/cpe_agent/client.crt
-#   # key_file: /etc/cpe_agent/client.key
-#   # tls_insecure: false   # default true when ca_file empty
-
-# ---------------------------------------------------------------------------
-# TCP control-plane stats via NFLOG (SYN retrans / FIN / RST)
-# Host iptables (insert in reverse order) — group must match nflog_group:
-#   iptables -I FORWARD 1 -p tcp -m tcp --tcp-flags RST RST \
-#     -j NFLOG --nflog-group 5 --nflog-size 60
-#   iptables -I FORWARD 1 -p tcp -m tcp --tcp-flags FIN FIN \
-#     -j NFLOG --nflog-group 5 --nflog-size 60
-#   iptables -I FORWARD 1 -p tcp -m tcp --tcp-flags SYN SYN \
-#     -m conntrack --ctstate NEW -j NFLOG --nflog-group 5 --nflog-size 60
-# Emits type=cpe_tcp NDJSON (summary + top remotes + prefixes).
-# Lua: cpe.tcp_poll / cpe.tcp_stats / cpe.tcp_by_ip / cpe.tcp_by_prefix
-# ---------------------------------------------------------------------------
+#
 # tcp_stats:
 #   enabled: true
 #   nflog_group: 5
 #   nflog_size: 60
 #   emit_interval_ms: 10000
 #   emit_top_n: 20
-#   prefix_len: 24          # remote network aggregation (use 16 for CDN blocks)
+#   prefix_len: 24
+#
+# Host iptables (group must match nflog_group):
+#   iptables -I FORWARD 1 -p tcp -m tcp --tcp-flags RST RST \
+#     -j NFLOG --nflog-group 5 --nflog-size 60
+#   iptables -I FORWARD 1 -p tcp -m tcp --tcp-flags FIN FIN \
+#     -j NFLOG --nflog-group 5 --nflog-size 60
+#   iptables -I FORWARD 1 -p tcp -m tcp --tcp-flags SYN SYN \
+#     -m conntrack --ctstate NEW -j NFLOG --nflog-group 5 --nflog-size 60
+# Lua on demand: cpe_ctl tcp_stats | cpe_ctl --lua
+#   cpe.tcp_poll / cpe.tcp_stats / cpe.tcp_by_ip / cpe.tcp_by_prefix
 
 # Control socket for cpe_ctl (human/AI Lua front-end)
 ipc:

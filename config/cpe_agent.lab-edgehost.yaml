@@ -1,0 +1,37 @@
+# Lab: cpe_agent → local edgehost CH telemetry proxy (no public VIP).
+# Use when edgehost runs on the same host/LAN with:
+#   plugins.clickhouse.proxy_listen_port: 18082
+#   telemetry_user / telemetry_password as below
+#
+# For field VIP path see cpe_agent.field.yaml (174.128.129.0:18082).
+
+router_id: lab-cpe-1
+
+emit:
+  mode: http
+
+egress:
+  # Direct to edgehost CPE ClickHouse proxy listen (lab internal).
+  url: "http://127.0.0.1:18082/api/v1/telemetry/events"
+  username: cpe_ingest
+  password: "change-me"
+
+spool:
+  max_lines: 64
+
+demo:
+  enabled: false
+  target: "1.1.1.1"
+  interval_ms: 30000
+  timeout_ms: 1000
+
+tcp_stats:
+  enabled: true
+  nflog_group: 5
+  nflog_size: 60
+  emit_interval_ms: 10000
+  emit_top_n: 15
+  prefix_len: 24
+
+ipc:
+  socket: /tmp/cpe_agent_lab.sock

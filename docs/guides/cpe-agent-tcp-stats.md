@@ -28,14 +28,27 @@ Requires **CAP_NET_ADMIN** (and host netns if containerized — ADR-009).
 
 ## Agent config
 
+Field profile: `config/cpe_agent.field.yaml` (NFLOG **5** → CH proxy
+`http://174.128.129.0:18082/api/v1/telemetry/events`).
+
 ```yaml
+emit:
+  mode: http
+egress:
+  url: "http://174.128.129.0:18082/api/v1/telemetry/events"
+  username: cpe_ingest
+  password: "change-me"
+
 tcp_stats:
   enabled: true
-  nflog_group: 5
+  nflog_group: 5            # nflog:5
   nflog_size: 60
   emit_interval_ms: 10000   # summary + top-N emit period
   emit_top_n: 20
   prefix_len: 24            # use 16 for larger CDN blocks
+
+ipc:
+  socket: /var/run/netforensics/cpe_agent.sock
 ```
 
 ## What is measured
@@ -61,7 +74,17 @@ the most control-plane activity (useful for Netflix/CDN investigation).
 {"type":"cpe_tcp","scope":"prefix","prefix":"45.57.0.0/16","bytes":1200,"loss_hint":0.1,…}
 ```
 
-## Lua
+## Lua (on-demand retrieval)
+
+**Against the running daemon** (`cpe_ctl` — preferred for operators/AI):
+
+```bash
+cpe_ctl tcp_stats
+cpe_ctl --lua-eval "print(cpe.tcp_stats().loss_hint)"
+cpe_ctl --lua-eval "for _,p in ipairs(cpe.tcp_by_prefix()) do print(p.prefix,p.bytes) end"
+```
+
+**Embedded on `cpe_agent`** (same `cpe.*` API):
 
 ```lua
 cpe.tcp_open(5)
@@ -69,7 +92,7 @@ cpe.tcp_poll(128)
 print(cpe.tcp_stats().loss_hint)
 print(cpe.tcp_by_ip("1.1.1.1"))
 for _,p in ipairs(cpe.tcp_by_prefix()) do print(p.prefix, p.bytes) end
-cpe.tcp_emit(10); cpe.emit()
+cpe.tcp_emit(10); cpe.emit()   -- push cpe_tcp NDJSON + flush to CH proxy
 ```
 
 Example script: `examples/lua/tcp_stats_report.lua`.

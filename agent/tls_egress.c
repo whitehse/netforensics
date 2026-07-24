@@ -165,7 +165,14 @@ static int tcp_connect(const char *host, const char *port, char *err,
     memset(&hints, 0, sizeof(hints));
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_family = AF_UNSPEC;
+    /* Prefer numeric host so OpenWrt without DNS still reaches VIPs. */
+    hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;
     rc = getaddrinfo(host, port, &hints, &res);
+    if (rc != 0) {
+        /* Fall back if hostname was used (non-numeric). */
+        hints.ai_flags = 0;
+        rc = getaddrinfo(host, port, &hints, &res);
+    }
     if (rc != 0) {
         if (err && err_len) {
             snprintf(err, err_len, "getaddrinfo: %s", gai_strerror(rc));
@@ -269,7 +276,36 @@ static int plain_http_post(const char *host, const char *port, const char *path,
     resp[nr] = '\0';
     if (!http_status_ok(resp, (size_t)nr)) {
         if (err && err_len) {
-            snprintf(err, err_len, "http non-2xx");
+            /* Status line + a short body snippet for diagnosis. */
+            size_t i = 0;
+            size_t o = 0;
+            const char *bp;
+            while (i < (size_t)nr && resp[i] != '\r' && resp[i] != '\n' &&
+                   o + 1 < err_len) {
+                err[o++] = (char)resp[i++];
+            }
+            /* skip to body after blank line */
+            bp = strstr(resp, "\r\n\r\n");
+            if (bp) {
+                bp += 4;
+            } else {
+                bp = strstr(resp, "\n\n");
+                if (bp) {
+                    bp += 2;
+                }
+            }
+            if (bp && *bp && o + 3 < err_len) {
+                err[o++] = ' ';
+                err[o++] = '|';
+                err[o++] = ' ';
+                while (*bp && *bp != '\r' && *bp != '\n' && o + 1 < err_len) {
+                    err[o++] = *bp++;
+                }
+            }
+            err[o] = '\0';
+            if (o == 0) {
+                snprintf(err, err_len, "http non-2xx");
+            }
         }
         return -1;
     }
