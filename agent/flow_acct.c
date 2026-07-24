@@ -53,17 +53,38 @@ static void iso_now(char *buf, size_t n)
     struct timespec ts;
     struct tm tm;
     time_t sec;
-    long ms;
+    int ms;
+    int y;
 
-    if (!buf || n < 24) {
+    if (!buf || n < 25) {
         return;
     }
-    clock_gettime(CLOCK_REALTIME, &ts);
+    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+        snprintf(buf, n, "1970-01-01T00:00:00.000Z");
+        return;
+    }
     sec = ts.tv_sec;
-    ms = ts.tv_nsec / 1000000L;
-    gmtime_r(&sec, &tm);
-    snprintf(buf, n, "%04d-%02d-%02dT%02d:%02d:%02d.%03ldZ", tm.tm_year + 1900,
-             tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, ms);
+    ms = (int)(ts.tv_nsec / 1000000L);
+    if (ms < 0) {
+        ms = 0;
+    }
+    if (ms > 999) {
+        ms = 999;
+    }
+    if (!gmtime_r(&sec, &tm)) {
+        snprintf(buf, n, "1970-01-01T00:00:00.000Z");
+        return;
+    }
+    /* Clamp year so -Wformat-truncation is quiet on armv7 cross-gcc. */
+    y = tm.tm_year + 1900;
+    if (y < 0) {
+        y = 0;
+    }
+    if (y > 9999) {
+        y = 9999;
+    }
+    snprintf(buf, n, "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", y, tm.tm_mon + 1,
+             tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, ms);
 }
 
 static void ipv4_str(uint32_t host_order, char *buf, size_t n)
