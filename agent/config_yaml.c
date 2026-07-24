@@ -275,6 +275,70 @@ static int apply_scalar(cpe_agent_config_t *c, const char *key, const char *val,
         c->tcp_emit_top_n = u32;
         return 0;
     }
+    if (strcmp(key, "flow_acct.enabled") == 0 ||
+        strcmp(key, "flow_acct_enabled") == 0) {
+        if (parse_bool(val, &iv) != 0) {
+            FAIL("invalid bool");
+        }
+        c->flow_acct_enabled = iv;
+        return 0;
+    }
+    if (strcmp(key, "flow_acct.join_update") == 0) {
+        if (parse_bool(val, &iv) != 0) {
+            FAIL("invalid bool");
+        }
+        c->flow_join_update = iv;
+        return 0;
+    }
+    if (strcmp(key, "flow_acct.emit_destroy") == 0) {
+        if (parse_bool(val, &iv) != 0) {
+            FAIL("invalid bool");
+        }
+        c->flow_emit_destroy = iv;
+        return 0;
+    }
+    if (strcmp(key, "flow_acct.emit_new") == 0) {
+        if (parse_bool(val, &iv) != 0) {
+            FAIL("invalid bool");
+        }
+        c->flow_emit_new = iv;
+        return 0;
+    }
+    if (strcmp(key, "flow_acct.poll_interval_ms") == 0) {
+        if (parse_u32(val, &u32) != 0 || u32 == 0) {
+            FAIL("invalid");
+        }
+        c->flow_poll_interval_ms = u32;
+        return 0;
+    }
+    if (strcmp(key, "flow_acct.dump_interval_ms") == 0) {
+        if (parse_u32(val, &u32) != 0) {
+            FAIL("invalid");
+        }
+        c->flow_dump_interval_ms = u32;
+        return 0;
+    }
+    if (strcmp(key, "flow_acct.sample_emit_ms") == 0) {
+        if (parse_u32(val, &u32) != 0 || u32 == 0) {
+            FAIL("invalid");
+        }
+        c->flow_sample_emit_ms = u32;
+        return 0;
+    }
+    if (strcmp(key, "flow_acct.sample_top_n") == 0) {
+        if (parse_u32(val, &u32) != 0 || u32 == 0) {
+            FAIL("invalid");
+        }
+        c->flow_sample_top_n = u32;
+        return 0;
+    }
+    if (strcmp(key, "flow_acct.max_flows") == 0) {
+        if (parse_u32(val, &u32) != 0 || u32 == 0) {
+            FAIL("invalid");
+        }
+        c->flow_max_flows = u32;
+        return 0;
+    }
     if (strcmp(key, "tcp_stats.prefix_len") == 0 ||
         strcmp(key, "tcp_prefix_len") == 0) {
         if (parse_u32(val, &u32) != 0 || u32 == 0 || u32 > 32u) {
@@ -364,6 +428,16 @@ static const char *const g_paths[] = {
     "tcp_emit_top_n",
     "tcp_stats.prefix_len",
     "tcp_prefix_len",
+    "flow_acct.enabled",
+    "flow_acct_enabled",
+    "flow_acct.join_update",
+    "flow_acct.emit_destroy",
+    "flow_acct.emit_new",
+    "flow_acct.poll_interval_ms",
+    "flow_acct.dump_interval_ms",
+    "flow_acct.sample_emit_ms",
+    "flow_acct.sample_top_n",
+    "flow_acct.max_flows",
     "ipc.socket",
     "ipc_socket",
     "ipc.path",

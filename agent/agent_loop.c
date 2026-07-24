@@ -235,8 +235,11 @@ int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts)
         return 1;
     }
 
-    /* Poll control socket every 200ms so cpe_ctl stays responsive. */
-    if (ctx.ipc && uv_timer_init(loop, &ctx.ipc_timer) == 0) {
+    /*
+     * 200 ms tick: control socket + flow_acct (conntrack poll/dump).
+     * Always start so flow accounting works even without IPC.
+     */
+    if (uv_timer_init(loop, &ctx.ipc_timer) == 0) {
         ctx.ipc_timer_inited = 1;
         ctx.ipc_timer.data = &ctx;
         (void)uv_timer_start(&ctx.ipc_timer, on_ipc_timer, 50, 200);
@@ -271,6 +274,8 @@ int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts)
 static void on_ipc_timer(uv_timer_t *t)
 {
     cpe_uv_ctx_t *ctx = (cpe_uv_ctx_t *)t->data;
+    const cpe_agent_config_t *cfg;
+
     if (!ctx) {
         return;
     }
@@ -280,5 +285,14 @@ static void on_ipc_timer(uv_timer_t *t)
     }
     if (ctx->ipc) {
         (void)cpe_ipc_server_poll(ctx->ipc);
+    }
+    /* Flow accounting runs on the 200 ms slice (not the sample timer). */
+    cfg = ctx->agent ? cpe_agent_config(ctx->agent) : NULL;
+    if (cfg && cfg->flow_acct_enabled) {
+        if (cpe_agent_flow_tick(ctx->agent) > 0) {
+            if (cpe_agent_emit_flush(ctx->agent) < 0) {
+                fprintf(stderr, "cpe_agent: flow emit_flush failed\n");
+            }
+        }
     }
 }

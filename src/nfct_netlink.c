@@ -16,6 +16,7 @@
 #include <sys/socket.h>
 #include <linux/netlink.h>
 #include <linux/netfilter/nfnetlink.h>
+#include <netinet/in.h>
 
 int nfct_netlink_open(int join_update, char *errbuf, size_t errbuf_len)
 {
@@ -114,4 +115,66 @@ int nfct_netlink_recv(int fd, uint8_t *buf, size_t buflen)
         return -1;
     }
     return (int)n;
+}
+
+int nfct_netlink_open_dump(char *errbuf, size_t errbuf_len)
+{
+    int fd;
+    struct sockaddr_nl sa;
+
+    fd = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_NETFILTER);
+    if (fd < 0) {
+        if (errbuf && errbuf_len) {
+            snprintf(errbuf, errbuf_len, "socket dump: %s", strerror(errno));
+        }
+        return -1;
+    }
+    memset(&sa, 0, sizeof(sa));
+    sa.nl_family = AF_NETLINK;
+    if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
+        if (errbuf && errbuf_len) {
+            snprintf(errbuf, errbuf_len, "bind dump: %s", strerror(errno));
+        }
+        close(fd);
+        return -1;
+    }
+    {
+        int rcv = 1 << 20;
+        (void)setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcv, sizeof(rcv));
+    }
+    return fd;
+}
+
+int nfct_netlink_dump_request(int dump_fd)
+{
+    /* nlmsghdr + nfgenmsg — request full conntrack dump */
+    struct {
+        struct nlmsghdr nlh;
+        struct nfgenmsg nf;
+    } req;
+    struct sockaddr_nl sa;
+    ssize_t n;
+
+    if (dump_fd < 0) {
+        return -1;
+    }
+    memset(&req, 0, sizeof(req));
+    req.nlh.nlmsg_len = sizeof(req);
+    /* NFNL_SUBSYS_CTNETLINK=1, IPCTNL_MSG_CT_GET=1 */
+    req.nlh.nlmsg_type = (1 << 8) | 1;
+    req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
+    req.nlh.nlmsg_seq = 1;
+    req.nlh.nlmsg_pid = 0;
+    req.nf.nfgen_family = AF_UNSPEC;
+    req.nf.version = NFNETLINK_V0;
+    req.nf.res_id = 0;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.nl_family = AF_NETLINK;
+    n = sendto(dump_fd, &req, sizeof(req), 0, (struct sockaddr *)&sa,
+               sizeof(sa));
+    if (n != (ssize_t)sizeof(req)) {
+        return -1;
+    }
+    return 0;
 }

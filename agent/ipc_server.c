@@ -238,7 +238,8 @@ int cpe_ipc_handle_request(cpe_agent_t *a, const char *req_json, char *out,
             "{\"ok\":true,\"op\":\"help\",\"data\":["
             "\"ping\",\"status\",\"config\",\"last_sample\",\"latency\","
             "\"spool\",\"emit\",\"tcp_poll\",\"tcp_stats\",\"tcp_by_ip\","
-            "\"tcp_by_prefix\",\"tcp_emit\",\"tcp_reset\""
+            "\"tcp_by_prefix\",\"tcp_emit\",\"tcp_reset\","
+            "\"flow_tick\",\"flow_stats\",\"flow_list\""
             "]}");
         return (n < 0 || (size_t)n >= out_sz) ? -1 : 0;
     }
@@ -253,6 +254,7 @@ int cpe_ipc_handle_request(cpe_agent_t *a, const char *req_json, char *out,
             "\"demo\":%s,"
             "\"tcp_stats\":%s,"
             "\"tcp_nflog_group\":%u,"
+            "\"flow_acct\":%s,"
             "\"spool_depth\":%zu,"
             "\"spool_drops\":%zu,"
             "\"generation\":%llu"
@@ -261,8 +263,9 @@ int cpe_ipc_handle_request(cpe_agent_t *a, const char *req_json, char *out,
             cfg->openai_proxy_url[0] ? cfg->openai_proxy_url : "",
             cfg->demo_mode ? "true" : "false",
             cfg->tcp_stats_enabled ? "true" : "false",
-            (unsigned)cfg->tcp_nflog_group, cpe_agent_spool_depth(a),
-            cpe_agent_spool_drops(a),
+            (unsigned)cfg->tcp_nflog_group,
+            cfg->flow_acct_enabled ? "true" : "false",
+            cpe_agent_spool_depth(a), cpe_agent_spool_drops(a),
             (unsigned long long)cfg->generation);
         return (n < 0 || (size_t)n >= out_sz) ? -1 : 0;
     }
@@ -363,6 +366,79 @@ int cpe_ipc_handle_request(cpe_agent_t *a, const char *req_json, char *out,
             (unsigned)snap.prefix_count, (unsigned)snap.prefix_len, (double)loss,
             snap.ts_iso, (unsigned long long)snap.pkts_parsed);
         return (n < 0 || (size_t)n >= out_sz) ? -1 : 0;
+    }
+    if (strcmp(op, "flow_tick") == 0) {
+        int work = cpe_agent_flow_tick(a);
+        if (work < 0) {
+            return respond_err(out, out_sz, op, "flow_tick failed");
+        }
+        n = snprintf(out, out_sz,
+                     "{\"ok\":true,\"op\":\"flow_tick\",\"data\":{\"work\":%d}}",
+                     work);
+        return (n < 0 || (size_t)n >= out_sz) ? -1 : 0;
+    }
+    if (strcmp(op, "flow_stats") == 0) {
+        cpe_flow_snapshot_t snap;
+        if (cpe_agent_flow_snapshot(a, &snap) != 0) {
+            return respond_err(out, out_sz, op, "no flow state");
+        }
+        n = snprintf(
+            out, out_sz,
+            "{\"ok\":true,\"op\":\"flow_stats\",\"data\":{"
+            "\"flow_count\":%u,\"events_in\":%llu,\"destroys_emitted\":%llu,"
+            "\"samples_emitted\":%llu,\"dumps\":%llu,\"open_ok\":%s,"
+            "\"ts\":\"%s\"}}",
+            (unsigned)snap.flow_count, (unsigned long long)snap.events_in,
+            (unsigned long long)snap.destroys_emitted,
+            (unsigned long long)snap.samples_emitted,
+            (unsigned long long)snap.dumps, snap.open_ok ? "true" : "false",
+            snap.ts_iso);
+        return (n < 0 || (size_t)n >= out_sz) ? -1 : 0;
+    }
+    if (strcmp(op, "flow_list") == 0) {
+        cpe_flow_snapshot_t snap;
+        uint32_t limit = 32;
+        uint32_t i;
+        size_t pos;
+        int wn;
+
+        (void)json_get_u32(req_json, "limit", &limit);
+        if (limit == 0 || limit > 64) {
+            limit = 32;
+        }
+        if (cpe_agent_flow_snapshot(a, &snap) != 0) {
+            return respond_err(out, out_sz, op, "no flow state");
+        }
+        pos = 0;
+        wn = snprintf(out + pos, out_sz - pos,
+                      "{\"ok\":true,\"op\":\"flow_list\",\"data\":{\"flows\":[");
+        if (wn < 0 || (size_t)wn >= out_sz - pos) {
+            return -1;
+        }
+        pos += (size_t)wn;
+        for (i = 0; i < snap.flow_count && i < limit; i++) {
+            const cpe_flow_entry_t *e = &snap.flows[i];
+            wn = snprintf(
+                out + pos, out_sz - pos,
+                "%s{\"flow_id\":\"%s\",\"proto\":%u,\"lan\":\"%s:%u\","
+                "\"remote\":\"%s:%u\",\"wan\":\"%s:%u\","
+                "\"bytes_up\":%llu,\"bytes_down\":%llu,"
+                "\"rate_up_bps\":%.0f,\"rate_down_bps\":%.0f,"
+                "\"state\":\"%s\"}",
+                i ? "," : "", e->flow_id, (unsigned)e->proto, e->lan_ip,
+                (unsigned)e->lan_port, e->remote_ip, (unsigned)e->remote_port,
+                e->wan_ip, (unsigned)e->wan_port,
+                (unsigned long long)e->bytes_up,
+                (unsigned long long)e->bytes_down, e->rate_up_bps,
+                e->rate_down_bps, e->state);
+            if (wn < 0 || (size_t)wn >= out_sz - pos) {
+                return -1;
+            }
+            pos += (size_t)wn;
+        }
+        wn = snprintf(out + pos, out_sz - pos, "],\"count\":%u}}",
+                      (unsigned)snap.flow_count);
+        return (wn < 0 || (size_t)wn >= out_sz - pos) ? -1 : 0;
     }
     if (strcmp(op, "tcp_by_ip") == 0) {
         char ip[CPE_TCP_IP_MAX];

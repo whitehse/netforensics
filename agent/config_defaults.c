@@ -33,6 +33,15 @@ void cpe_agent_config_defaults(cpe_agent_config_t *c)
     c->tcp_emit_interval_ms = 10000;
     c->tcp_emit_top_n = 20;
     c->tcp_prefix_len = 24;
+    c->flow_acct_enabled = 0;
+    c->flow_join_update = 1;
+    c->flow_emit_destroy = 1;
+    c->flow_emit_new = 0;
+    c->flow_poll_interval_ms = 200;
+    c->flow_dump_interval_ms = 200;
+    c->flow_sample_emit_ms = 2000;
+    c->flow_sample_top_n = 32;
+    c->flow_max_flows = 1024;
     snprintf(c->ipc_socket, sizeof(c->ipc_socket),
              "/var/run/netforensics/cpe_agent.sock");
     c->openai_proxy_url[0] = '\0';

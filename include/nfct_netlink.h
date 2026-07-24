@@ -31,6 +31,19 @@ int nfct_netlink_recv(int fd, uint8_t *buf, size_t buflen);
  */
 int nfct_netlink_set_nonblock(int fd);
 
+/**
+ * Open a dedicated unicast netlink socket for conntrack table dumps
+ * (IPCTNL_MSG_CT_GET + NLM_F_DUMP). Returns fd >= 0 or -1.
+ */
+int nfct_netlink_open_dump(char *errbuf, size_t errbuf_len);
+
+/**
+ * Send a dump request on @p dump_fd previously opened with
+ * nfct_netlink_open_dump. Replies are read via nfct_netlink_recv.
+ * @return 0 ok, -1 on error.
+ */
+int nfct_netlink_dump_request(int dump_fd);
+
 #ifdef __cplusplus
 }
 #endif

@@ -7,6 +7,7 @@
 #include "cpe_agent_tls.h"
 #include "cpe_host_alloc.h"
 #include "cpe_spool.h"
+#include "cpe_flow_acct.h"
 #include "cpe_tcp_stats.h"
 
 #include "netdiag.h"
@@ -58,7 +59,8 @@ struct cpe_agent {
     uint64_t      nfct_obs;
     cpe_buf_slot_t slots[CPE_NEED_SLOTS];
 
-    cpe_tcp_state_t tcp; /* NFLOG TCP control-plane stats */
+    cpe_tcp_state_t  tcp;  /* NFLOG TCP control-plane stats */
+    cpe_flow_state_t flow; /* conntrack flow bandwidth */
 };
 
 const char *cpe_agent_event_type_name(cpe_agent_event_type_t t)
@@ -157,6 +159,7 @@ cpe_agent_t *cpe_agent_create(void)
         return NULL;
     }
     cpe_tcp_state_init(&a->tcp);
+    cpe_flow_state_init(&a->flow);
     return a;
 }
 
@@ -166,6 +169,7 @@ void cpe_agent_destroy(cpe_agent_t *a)
         return;
     }
     cpe_agent_tcp_close(a);
+    cpe_agent_flow_close(a);
     free_spool(a);
     if (a->nfct) {
         nfct_destroy(a->nfct);
@@ -189,6 +193,16 @@ const cpe_tcp_state_t *cpe_agent_tcp_state_const(const cpe_agent_t *a)
 int cpe_agent_tcp_state_ensure(cpe_agent_t *a)
 {
     return a ? 0 : -1;
+}
+
+cpe_flow_state_t *cpe_agent_flow_state(cpe_agent_t *a)
+{
+    return a ? &a->flow : NULL;
+}
+
+const cpe_flow_state_t *cpe_agent_flow_state_const(const cpe_agent_t *a)
+{
+    return a ? &a->flow : NULL;
 }
 
 int cpe_agent_apply_config(cpe_agent_t *a, const cpe_agent_config_t *cfg)
@@ -229,6 +243,7 @@ int cpe_agent_apply_config(cpe_agent_t *a, const cpe_agent_config_t *cfg)
         uint64_t next_gen = a->cfg.generation + 1;
         int tcp_was = a->cfg.tcp_stats_enabled;
         uint16_t old_group = a->cfg.tcp_nflog_group;
+        int flow_was = a->cfg.flow_acct_enabled;
 
         a->cfg = shadow;
         a->cfg.generation = next_gen;
@@ -257,6 +272,36 @@ int cpe_agent_apply_config(cpe_agent_t *a, const cpe_agent_config_t *cfg)
         } else if (tcp_was) {
             cpe_agent_tcp_close(a);
             a->tcp.enabled = 0;
+        }
+
+        /* Conntrack flow accounting. */
+        a->flow.poll_interval_ms =
+            a->cfg.flow_poll_interval_ms ? a->cfg.flow_poll_interval_ms : 200;
+        a->flow.dump_interval_ms = a->cfg.flow_dump_interval_ms
+                                       ? a->cfg.flow_dump_interval_ms
+                                       : 200;
+        a->flow.sample_emit_ms =
+            a->cfg.flow_sample_emit_ms ? a->cfg.flow_sample_emit_ms : 2000;
+        a->flow.sample_top_n =
+            a->cfg.flow_sample_top_n ? a->cfg.flow_sample_top_n : 32;
+        a->flow.max_flows =
+            a->cfg.flow_max_flows ? a->cfg.flow_max_flows : CPE_FLOW_MAX;
+        if (a->flow.max_flows > CPE_FLOW_MAX) {
+            a->flow.max_flows = CPE_FLOW_MAX;
+        }
+        a->flow.join_update = a->cfg.flow_join_update;
+        a->flow.emit_destroy = a->cfg.flow_emit_destroy;
+        a->flow.emit_new = a->cfg.flow_emit_new;
+        if (a->cfg.flow_acct_enabled) {
+            if (!flow_was || a->flow.fd < 0) {
+                cpe_agent_flow_close(a);
+                (void)cpe_agent_flow_open(a);
+            } else {
+                a->flow.enabled = 1;
+            }
+        } else if (flow_was) {
+            cpe_agent_flow_close(a);
+            a->flow.enabled = 0;
         }
     }
     (void)eq_push(a, CPE_AGENT_EVENT_CONFIG_APPLIED, "ok", 0, 0);

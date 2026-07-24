@@ -10,7 +10,9 @@
 #define CPE_AGENT_H
 
 #include "cpe_agent_config.h"
+#include "cpe_flow_acct.h"
 #include "cpe_tcp_stats.h"
+#include "nfct.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -343,6 +345,20 @@ const char *cpe_agent_tcp_last_error(const cpe_agent_t *a);
 
 /** NFLOG fd for host poll integration, or -1. */
 int cpe_agent_tcp_fd(const cpe_agent_t *a);
+
+/* ---- flow accounting (conntrack bytes) ---- */
+
+cpe_flow_state_t *cpe_agent_flow_state(cpe_agent_t *a);
+const cpe_flow_state_t *cpe_agent_flow_state_const(const cpe_agent_t *a);
+int cpe_agent_flow_open(cpe_agent_t *a);
+void cpe_agent_flow_close(cpe_agent_t *a);
+/** Drain multicast + optional dump; emit destroy/sample lines. @return work units. */
+int cpe_agent_flow_tick(cpe_agent_t *a);
+int cpe_agent_flow_poll(cpe_agent_t *a, unsigned max_msgs);
+int cpe_agent_flow_snapshot(const cpe_agent_t *a, cpe_flow_snapshot_t *out);
+/** Test hook: apply a parsed nfct event. */
+int cpe_agent_flow_feed_event(cpe_agent_t *a, const nfct_event_t *ev);
+const char *cpe_agent_flow_last_error(const cpe_agent_t *a);
 
 /** Spool: push a complete NDJSON line (without requiring trailing \\n). */
 int    cpe_agent_spool_push_line(cpe_agent_t *a, const char *line);

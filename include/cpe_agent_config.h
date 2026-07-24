@@ -58,6 +58,19 @@ typedef struct {
     uint32_t tcp_emit_top_n;        /* 0 → 20; top remotes/prefixes per emit */
     uint8_t  tcp_prefix_len;        /* 0 → 24; IPv4 aggregation mask */
     /**
+     * Per-flow bandwidth accounting from conntrack (nf_conntrack_acct=1).
+     * Poll + optional dump every poll_interval_ms; sample top-N periodically.
+     */
+    int      flow_acct_enabled;       /* 0 = off (default) */
+    int      flow_join_update;        /* 1 = also join UPDATE multicast */
+    int      flow_emit_destroy;       /* 1 = emit cpe_flow on DESTROY */
+    int      flow_emit_new;           /* 1 = emit cpe_flow on NEW (noisy) */
+    uint32_t flow_poll_interval_ms;   /* 0 → 200 */
+    uint32_t flow_dump_interval_ms;   /* 0 → 200; 0 disables active dump */
+    uint32_t flow_sample_emit_ms;     /* 0 → 2000; top-N live samples */
+    uint32_t flow_sample_top_n;       /* 0 → 32 */
+    uint32_t flow_max_flows;          /* 0 → 1024; table cap */
+    /**
      * Control-plane UDS for cpe_ctl (human/AI Lua front-end).
      * Empty → /var/run/netforensics/cpe_agent.sock. Set "off" to disable.
      */

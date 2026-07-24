@@ -170,7 +170,7 @@ int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts)
                 break;
             }
         }
-        /* Slice sleep so UDS stays responsive between sample intervals. */
+        /* Slice sleep so UDS + flow_acct stay responsive between samples. */
         ipc_slice = 200;
         {
             uint32_t left = interval;
@@ -179,6 +179,15 @@ int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts)
                 msleep(step);
                 if (ipc) {
                     (void)cpe_ipc_server_poll(ipc);
+                }
+                cfg = cpe_agent_config(a);
+                if (cfg && cfg->flow_acct_enabled) {
+                    if (cpe_agent_flow_tick(a) > 0) {
+                        if (cpe_agent_emit_flush(a) < 0) {
+                            fprintf(stderr,
+                                    "cpe_agent: flow emit_flush failed\n");
+                        }
+                    }
                 }
                 left -= step;
             }

@@ -268,6 +268,7 @@ set(CPE_AGENT_SOURCES
     agent/live_trace.c
     agent/wifi_stats.c
     agent/tcp_stats.c
+    agent/flow_acct.c
     agent/ipc_server.c
     agent/ipc_client.c
     agent/spool_util.c
@@ -393,6 +394,10 @@ add_test(NAME cpe_agent_lua COMMAND test_cpe_agent_lua)
 add_executable(test_cpe_tcp_stats tests/test_cpe_tcp_stats.c)
 target_link_libraries(test_cpe_tcp_stats PRIVATE cpe_agent_lib)
 add_test(NAME cpe_tcp_stats COMMAND test_cpe_tcp_stats)
+
+add_executable(test_cpe_flow_acct tests/test_cpe_flow_acct.c)
+target_link_libraries(test_cpe_flow_acct PRIVATE cpe_agent_lib)
+add_test(NAME cpe_flow_acct COMMAND test_cpe_flow_acct)
 
 add_executable(test_cpe_ipc tests/test_cpe_ipc.c)
 target_link_libraries(test_cpe_ipc PRIVATE cpe_agent_lib)
