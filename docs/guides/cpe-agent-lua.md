@@ -82,6 +82,13 @@ History defaults to `~/.cpe_agent_history`, or `/tmp/cpe_agent_history` if
 | `cpe.spool_depth()` / `cpe.spool_drops()` | int | Spool stats |
 | `cpe.reload([path])` | bool | Re-read YAML |
 | `cpe.dofile(path)` | — | Run another script in this state |
+| `cpe.tcp_open([group])` | bool[, err] | Enable + bind NFLOG group (default 5) |
+| `cpe.tcp_poll([max])` | int | Drain NFLOG; return packets processed |
+| `cpe.tcp_stats()` | table | Summary SYN/FIN/RST/bytes/`loss_hint` |
+| `cpe.tcp_by_ip([ip])` | table or array | One remote or all remotes |
+| `cpe.tcp_by_prefix([cidr])` | table or array | One prefix or all (CDN rollups) |
+| `cpe.tcp_emit([top_n])` | int | Push `cpe_tcp` NDJSON to spool |
+| `cpe.tcp_reset()` | bool | Clear TCP counters |
 
 Not exposed (C / CLI only): `set_demo`, `demo_ping`, `demo_arping`,
 `demo_wifi_stats`.
@@ -167,6 +174,16 @@ cpe> for _,ip in ipairs{"192.168.1.1","1.1.1.1","8.8.8.8"} do
 ...   local r = cpe.live_ping(ip)
 ...   print(ip, r and r.rtt_ms or "fail")
 ... end
+
+-- TCP NFLOG stats (needs iptables NFLOG group + CAP_NET_ADMIN)
+cpe> cpe.tcp_open(5)
+cpe> cpe.tcp_poll(128)
+cpe> s = cpe.tcp_stats(); print(s.syn, s.rst, s.loss_hint)
+cpe> r = cpe.tcp_by_ip("45.57.10.1"); print(r and r.loss_hint)
+cpe> for _,p in ipairs(cpe.tcp_by_prefix() or {}) do
+...   print(p.prefix, p.bytes, p.loss_hint)
+... end
+cpe> cpe.tcp_emit(10); cpe.emit()
 
 cpe> quit
 ```

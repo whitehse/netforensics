@@ -32,6 +32,7 @@ agent/                  — Track 2 + field path CPE agent
   config_yaml.c         — libyaml load
   host_alloc.c          — malloc gate for agent buffers
   perf_sample.c         — cpe_perf NDJSON formatter
+  tcp_stats.c           — NFLOG TCP SYN/FIN/RST aggregate + cpe_tcp NDJSON
 include/
   netforensics.h        — correlation / IPFIX / nfct glue
   cpe_agent.h           — agent public API
@@ -41,6 +42,7 @@ include/
   cpe_host_alloc.h
 src/
   nfct_netlink.c        — AF_NETLINK NETLINK_NETFILTER membership + recv
+  nflog_netlink.c       — NFLOG bind/recv/walk (TCP control-plane)
   ipfix_ingest.c        — libipfix collector glue
   bmp_ingest.c          — libbmp events → nf_bmp_obs_t / NDJSON
   flow_correlate.c      — pure helpers joining tuples (no I/O)
@@ -48,9 +50,10 @@ sql/
   001_schema.sql
   002_dictionary.sql
   003_cpe_perf_samples.sql   — N-A05
-  queries/
+  006_cpe_tcp_stats.sql      — TCP NFLOG SYN/FIN/RST
+  queries/                   — includes tcp_remote_loss / tcp_prefix_bandwidth
 vector/
-  vector.yaml           — includes cpe_perf → cpe_perf_samples
+  vector.yaml           — cpe_perf + cpe_tcp → ClickHouse
 config/
   forensicsd.example.yaml
   cpe_agent.example.yaml
@@ -71,6 +74,7 @@ tests/
 | Wi-Fi RSSI/MCS/retries | `nl80211_parse_feed_input` |
 | BMP | **libbmp** `bmp_feed_*` + app `nf_bmp_collect*` |
 | Ping / perf demo | libnetdiag `ping_*` + agent spool |
+| TCP NFLOG stats | `nflog_netlink_*` + `cpe_agent_tcp_*` / Lua `cpe.tcp_*` |
 | Config | libyaml |
 | Agent loop | libuv (class B) |
 | Agent buffers | `cpe_host_alloc` |

@@ -7,6 +7,7 @@
 #include "cpe_agent_tls.h"
 #include "cpe_host_alloc.h"
 #include "cpe_spool.h"
+#include "cpe_tcp_stats.h"
 
 #include "netdiag.h"
 #include "netforensics.h"
@@ -56,6 +57,8 @@ struct cpe_agent {
     nfct_ctx     *nfct; /* optional path reuse (P2.8) */
     uint64_t      nfct_obs;
     cpe_buf_slot_t slots[CPE_NEED_SLOTS];
+
+    cpe_tcp_state_t tcp; /* NFLOG TCP control-plane stats */
 };
 
 const char *cpe_agent_event_type_name(cpe_agent_event_type_t t)
@@ -153,6 +156,7 @@ cpe_agent_t *cpe_agent_create(void)
         free(a);
         return NULL;
     }
+    cpe_tcp_state_init(&a->tcp);
     return a;
 }
 
@@ -161,6 +165,7 @@ void cpe_agent_destroy(cpe_agent_t *a)
     if (!a) {
         return;
     }
+    cpe_agent_tcp_close(a);
     free_spool(a);
     if (a->nfct) {
         nfct_destroy(a->nfct);
@@ -169,6 +174,21 @@ void cpe_agent_destroy(cpe_agent_t *a)
         ping_destroy(a->ping);
     }
     free(a);
+}
+
+cpe_tcp_state_t *cpe_agent_tcp_state(cpe_agent_t *a)
+{
+    return a ? &a->tcp : NULL;
+}
+
+const cpe_tcp_state_t *cpe_agent_tcp_state_const(const cpe_agent_t *a)
+{
+    return a ? &a->tcp : NULL;
+}
+
+int cpe_agent_tcp_state_ensure(cpe_agent_t *a)
+{
+    return a ? 0 : -1;
 }
 
 int cpe_agent_apply_config(cpe_agent_t *a, const cpe_agent_config_t *cfg)
@@ -207,9 +227,37 @@ int cpe_agent_apply_config(cpe_agent_t *a, const cpe_agent_config_t *cfg)
     }
     {
         uint64_t next_gen = a->cfg.generation + 1;
+        int tcp_was = a->cfg.tcp_stats_enabled;
+        uint16_t old_group = a->cfg.tcp_nflog_group;
 
         a->cfg = shadow;
         a->cfg.generation = next_gen;
+
+        /* Rebind NFLOG when enabling or group changes. */
+        if (a->cfg.tcp_stats_enabled) {
+            if (!tcp_was || old_group != a->cfg.tcp_nflog_group ||
+                a->tcp.fd < 0) {
+                cpe_agent_tcp_close(a);
+                (void)cpe_agent_tcp_open(a);
+            } else {
+                a->tcp.enabled = 1;
+                a->tcp.prefix_len = a->cfg.tcp_prefix_len
+                                        ? a->cfg.tcp_prefix_len
+                                        : 24;
+                a->tcp.emit_interval_ms = a->cfg.tcp_emit_interval_ms
+                                              ? a->cfg.tcp_emit_interval_ms
+                                              : 10000;
+                a->tcp.emit_top_n =
+                    a->cfg.tcp_emit_top_n ? a->cfg.tcp_emit_top_n : 20;
+                a->tcp.snap.prefix_len = a->tcp.prefix_len;
+                a->tcp.snap.nflog_group = a->cfg.tcp_nflog_group
+                                              ? a->cfg.tcp_nflog_group
+                                              : 5;
+            }
+        } else if (tcp_was) {
+            cpe_agent_tcp_close(a);
+            a->tcp.enabled = 0;
+        }
     }
     (void)eq_push(a, CPE_AGENT_EVENT_CONFIG_APPLIED, "ok", 0, 0);
     return 0;

@@ -8,6 +8,7 @@
 - Core router **IPFIX** flows
 - BGP updates / historical RIB (ClickHouse)
 - **CPE performance samples** (`cpe_perf` NDJSON from the agent)
+- **CPE TCP control-plane stats** (`cpe_tcp` NDJSON from NFLOG SYN/FIN/RST)
 
 across ~25 core routers and 20,000+ CPE devices for hop-by-hop path reconstruction.
 
@@ -16,7 +17,8 @@ Program design: `~/edge-platform-program-design.md` (Track 2).
 ## Modules
 
 1. **CPE daemon** (`cpe/forensicsd`) — netlink conntrack + nl80211; emits `cpe_nat` / `cpe_wifi` NDJSON
-2. **CPE agent** (`agent/cpe_agent`) — libuv host; libnetdiag ping demo; emits `cpe_perf` NDJSON (Track 2)
+2. **CPE agent** (`agent/cpe_agent`) — daemon: samples + TCP NFLOG + edgehost emit + UDS for `cpe_ctl`
+2b. **CPE ctl** (`agent/cpe_ctl`) — human/AI Lua client over Unix socket (queries daemon only)
 3. **Ingest gateway** (`vector/`) — multiplex to ClickHouse
 4. **ClickHouse schema** (`sql/`) — tables, dictionaries, MVs
 5. **Query pack** (`sql/queries/`) — path tracers + blast-radius analysis
@@ -35,16 +37,16 @@ ctest --test-dir build --output-on-failure
 # forensicsd (NAT/wifi) — unchanged
 ./build/forensicsd --demo --router-id cpe-lab-1
 
-# cpe_agent (perf) — Track 2
+# cpe_agent daemon → edgehost (see docs/guides/cpe-agent-daemon.md)
 ./build/cpe_agent --once --router-id cpe-lab-1
 ./build/cpe_agent --config config/cpe_agent.example.yaml
-# Lua REPL / tools (embedded Lua 5.4 + linenoise history)
-./build/cpe_agent --lua
+# Interactive client (queries daemon UDS; preferred over cpe_agent --lua)
+./build/cpe_ctl status
+./build/cpe_ctl --lua
+./build/cpe_ctl --lua-eval "print(cpe.tcp_stats().loss_hint)"
+# Embedded local Lua still available on the daemon binary for offline tools
 ./build/cpe_agent --lua-eval "print(cpe.live_ping('127.0.0.1').rtt_ms)"
-./build/cpe_agent --lua-eval "local t=cpe.traceroute('1.1.1.1',15); print(t.reached, t.hop_count)"
-./build/cpe_agent --lua-file examples/lua/traceroute_report.lua
-# Docs: docs/guides/cpe-agent-lua.md
-# Note: synthetic demo probes are C-only (fuzz/dialectic); not on the Lua cpe.* table.
+# Docs: docs/guides/cpe-agent-daemon.md, cpe-agent-lua.md, cpe-agent-tcp-stats.md
 ```
 
 ## Directives

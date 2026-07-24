@@ -75,10 +75,12 @@ transforms:
       wifi: '.type == "cpe_wifi"'
       # Track 2 / N-A05: CPE agent performance samples
       perf: '.type == "cpe_perf"'
+      # TCP NFLOG control-plane stats (SYN/FIN/RST)
+      tcp: '.type == "cpe_tcp"'
 
   batch_guard:
     type: remap
-    inputs: [cpe_route.nat, cpe_route.wifi, cpe_route.perf, bmp_ndjson, bgp_kafka]
+    inputs: [cpe_route.nat, cpe_route.wifi, cpe_route.perf, cpe_route.tcp, bmp_ndjson, bgp_kafka]
     source: |
       .ingested_at = now()
 
@@ -94,6 +96,30 @@ transforms:
       .rtt_ms = to_float!(.rtt_ms)
       .loss = to_float!(.loss)
       .meta = encode_json(.meta) ?? "{}"
+
+  cpe_tcp_to_ch:
+    type: remap
+    inputs: [cpe_route.tcp]
+    source: |
+      .router_id = .router_id
+      .ts = .ts
+      .scope = .scope
+      .remote_ip = .remote_ip || ""
+      .local_ip = .local_ip || ""
+      .prefix = .prefix || ""
+      .remote_port = to_int(.remote_port) ?? 0
+      .local_port = to_int(.local_port) ?? 0
+      .syn = to_int(.syn) ?? 0
+      .fin = to_int(.fin) ?? 0
+      .rst = to_int(.rst) ?? 0
+      .syn_retrans = to_int(.syn_retrans) ?? 0
+      .pkts = to_int(.pkts) ?? 0
+      .bytes = to_int(.bytes) ?? 0
+      .remotes = to_int(.remotes) ?? 0
+      .loss_hint = to_float(.loss_hint) ?? 0.0
+      .prefix_len = to_int(.prefix_len) ?? 0
+      .nflog_group = to_int(.nflog_group) ?? 5
+      .meta = "{}"
 
 sinks:
   clickhouse_nat:
@@ -151,6 +177,24 @@ sinks:
       max_size: 268435456
     skip_unknown_fields: true
     # Prefer async inserts on the CH side (sql/005_async_insert_settings.sql)
+    query_settings:
+      async_insert: 1
+      wait_for_async_insert: 0
+
+  clickhouse_cpe_tcp:
+    type: clickhouse
+    inputs: [cpe_tcp_to_ch]
+    endpoint: "http://clickhouse:8123"
+    database: forensics
+    table: cpe_tcp_stats
+    compression: gzip
+    batch:
+      max_events: 10000
+      timeout_secs: 2
+    buffer:
+      type: disk
+      max_size: 268435456
+    skip_unknown_fields: true
     query_settings:
       async_insert: 1
       wait_for_async_insert: 0

@@ -100,7 +100,9 @@ clickhouse-client --multiquery < edgehost/sql/clickhouse/001_e7_netconf_events.s
 ### How CPE rows land in ClickHouse
 
 `POST /api/v1/telemetry/events` accepts NDJSON lines (`cpe_perf`, `cpe_nat`,
-`cpe_wifi`, …). edgehost **wraps** each object into the E7 events table shape:
+`cpe_wifi`, `cpe_tcp`, …). edgehost **wraps** each object into the E7 events
+table shape. For `type=cpe_tcp`, it also dual-writes a typed row into
+`edgehost.cpe_tcp_stats` (schema: `edgehost/sql/clickhouse/002_cpe_tcp_stats.sql`).
 
 | CH column | Source |
 |-----------|--------|
@@ -127,6 +129,15 @@ SELECT
 FROM edgehost.e7_netconf_events
 WHERE event_type = 'cpe_perf'
   AND event_time > now() - INTERVAL 1 HOUR;
+
+-- Typed TCP stats (loss ranking / CDN prefix views)
+SELECT remote_ip, sum(rst) AS rsts, avg(loss_hint) AS loss
+FROM edgehost.cpe_tcp_stats
+WHERE scope = 'remote' AND router_id = 'cpe-42'
+  AND ts > now() - INTERVAL 1 HOUR
+GROUP BY remote_ip
+ORDER BY loss DESC
+LIMIT 20;
 ```
 
 (If `payload` is the native JSON type, use `payload.rtt_ms` instead of

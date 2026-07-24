@@ -27,6 +27,16 @@ void cpe_agent_config_defaults(cpe_agent_config_t *c)
     c->probe_timeout_ms = 1000;
     c->demo_mode = 1;
     c->egress_tls_insecure = 1; /* soft TLS until ca_file is set */
+    c->tcp_stats_enabled = 0;
+    c->tcp_nflog_group = 5;
+    c->tcp_nflog_size = 60;
+    c->tcp_emit_interval_ms = 10000;
+    c->tcp_emit_top_n = 20;
+    c->tcp_prefix_len = 24;
+    snprintf(c->ipc_socket, sizeof(c->ipc_socket),
+             "/var/run/netforensics/cpe_agent.sock");
+    c->openai_proxy_url[0] = '\0';
+    c->postgres_proxy_url[0] = '\0';
     c->generation = 0;
 }
 

@@ -22,3 +22,12 @@ demo:
   target: "1.1.1.1"
   interval_ms: 60000
   timeout_ms: 1000
+
+# TCP NFLOG stats (host iptables NFLOG group; needs CAP_NET_ADMIN)
+# tcp_stats:
+#   enabled: true
+#   nflog_group: 5
+#   nflog_size: 60
+#   emit_interval_ms: 30000
+#   emit_top_n: 15
+#   prefix_len: 24

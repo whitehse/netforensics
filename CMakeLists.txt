@@ -128,6 +128,7 @@ add_library(netforensics_core STATIC
     src/bmp_ingest.c
     src/nfct_netlink.c
     src/nl80211_netlink.c
+    src/nflog_netlink.c
 )
 target_include_directories(netforensics_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -266,10 +267,16 @@ set(CPE_AGENT_SOURCES
     agent/live_arping.c
     agent/live_trace.c
     agent/wifi_stats.c
+    agent/tcp_stats.c
+    agent/ipc_server.c
+    agent/ipc_client.c
     agent/spool_util.c
     agent/tls_egress.c
     agent/lua_bind.c
 )
+if(CPE_HAVE_LUA)
+    list(APPEND CPE_AGENT_SOURCES agent/ctl_lua.c)
+endif()
 if(CPE_HAVE_LIBUV)
     list(APPEND CPE_AGENT_SOURCES agent/agent_loop.c)
 else()
@@ -335,6 +342,16 @@ if(CPE_AGENT_STATIC)
     endif()
 endif()
 
+# Human/AI control client (queries daemon over UDS; Lua when enabled)
+add_executable(cpe_ctl agent/ctl_main.c)
+target_link_libraries(cpe_ctl PRIVATE cpe_agent_lib)
+if(CPE_AGENT_STATIC)
+    target_link_options(cpe_ctl PRIVATE -static)
+    if(NOT MSVC)
+        target_link_options(cpe_ctl PRIVATE -static-libgcc)
+    endif()
+endif()
+
 add_executable(ipfix_ingest_demo src/ipfix_ingest_main.c)
 target_link_libraries(ipfix_ingest_demo PRIVATE netforensics_core)
 
@@ -372,6 +389,14 @@ add_test(NAME cpe_agent_track2 COMMAND test_cpe_agent_track2)
 add_executable(test_cpe_agent_lua tests/test_cpe_agent_lua.c)
 target_link_libraries(test_cpe_agent_lua PRIVATE cpe_agent_lib)
 add_test(NAME cpe_agent_lua COMMAND test_cpe_agent_lua)
+
+add_executable(test_cpe_tcp_stats tests/test_cpe_tcp_stats.c)
+target_link_libraries(test_cpe_tcp_stats PRIVATE cpe_agent_lib)
+add_test(NAME cpe_tcp_stats COMMAND test_cpe_tcp_stats)
+
+add_executable(test_cpe_ipc tests/test_cpe_ipc.c)
+target_link_libraries(test_cpe_ipc PRIVATE cpe_agent_lib)
+add_test(NAME cpe_ipc COMMAND test_cpe_ipc)
 
 # Smoke: forensicsd --demo still works (must not break)
 add_test(NAME forensicsd_demo

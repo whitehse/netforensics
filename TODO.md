@@ -90,3 +90,15 @@ cmake -B build -S . -DCPE_AGENT_WITH_MBEDTLS=ON
 - [x] prpl LCM EE package descriptor + LXC Profile A/B configs
 - [ ] On-device smoke: demo + live netlink inside privileged EE (needs hardware)
 - [ ] OpenWrt SDK staging_dir dry-run when vendor SDK available
+
+## TCP / QUIC stream performance (NFLOG)
+
+- [x] NFLOG netlink bind (configurable group, default 5) + packet walk
+- [x] TCP SYN/FIN/RST parse + per-remote / per-prefix aggregation
+- [x] `type=cpe_tcp` NDJSON emit + Lua `cpe.tcp_*` query surface
+- [x] ClickHouse `forensics.cpe_tcp_stats` + Vector route
+- [x] edgehost dual-write to `edgehost.cpe_tcp_stats` + retrieval SQL
+- [ ] On-device Calix u6.3 smoke with live iptables NFLOG rules
+- [ ] Named CDN prefix maps (Netflix / YouTube / …) for friendlier Lua queries
+- [ ] Full stream bandwidth (data-plane NFLOG or conntrack bytes) beyond control packets
+- [ ] QUIC performance analysis (future; share query surfaces with TCP)

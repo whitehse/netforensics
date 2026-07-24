@@ -1,23 +1,26 @@
 [Unit]
-Description=netforensics CPE performance agent (cpe_perf NDJSON)
-Documentation=file:///opt/netforensics/ARCHITECTURE.md
+Description=netforensics CPE agent daemon (perf/tcp NDJSON → edgehost)
+Documentation=file:///opt/netforensics/docs/guides/cpe-agent-daemon.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/cpe_agent --config /etc/cpe_agent/cpe_agent.yaml --router-id %H
-# Live ICMP may need CAP_NET_RAW when SOCK_DGRAM IPPROTO_ICMP is unavailable.
-AmbientCapabilities=CAP_NET_RAW
-CapabilityBoundingSet=CAP_NET_RAW
+ExecReload=/bin/kill -HUP $MAINPID
+# Live ICMP: CAP_NET_RAW; NFLOG TCP stats: CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-MemoryMax=24M
+MemoryMax=32M
 TasksMax=16
-LimitNOFILE=128
-ReadWritePaths=/var/spool/netforensics
+LimitNOFILE=256
+ReadWritePaths=/var/spool/netforensics /var/run/netforensics
+RuntimeDirectory=netforensics
+RuntimeDirectoryMode=0755
 StandardOutput=journal
 StandardError=journal
 Restart=on-failure

@@ -9,6 +9,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "cpe_agent.h"
+#include "cpe_ipc.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -95,8 +96,10 @@ int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts)
 {
     const cpe_agent_config_t *cfg;
     cpe_agent_run_opts_t local;
+    cpe_ipc_server_t *ipc = NULL;
     unsigned ticks = 0;
     uint32_t interval;
+    uint32_t ipc_slice;
 
     if (!a) {
         return 1;
@@ -113,6 +116,26 @@ int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts)
     g_stop = 0;
     g_hup = 0;
     cpe_agent_hup_install();
+
+    if (!opts->ipc_disable) {
+        const char *ipath = opts->ipc_socket_override;
+        char ierr[160];
+        if (!ipath || !ipath[0]) {
+            ipath = cfg->ipc_socket;
+        }
+        if (ipath && ipath[0] && strcmp(ipath, "off") != 0 &&
+            strcmp(ipath, "none") != 0) {
+            ierr[0] = '\0';
+            ipc = cpe_ipc_server_create(a, ipath, ierr, sizeof(ierr));
+            if (!ipc) {
+                fprintf(stderr, "cpe_agent: ipc listen failed (%s): %s\n",
+                        ipath, ierr[0] ? ierr : "error");
+            } else {
+                fprintf(stderr, "cpe_agent: control socket %s\n",
+                        cpe_ipc_server_path(ipc));
+            }
+        }
+    }
 
     interval = cfg->demo_interval_ms ? cfg->demo_interval_ms : 5000;
     /* First sample soon after start (mirrors libuv 10 ms first fire). */
@@ -131,13 +154,36 @@ int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts)
                 fprintf(stderr, "cpe_agent: sample_tick failed (demo=%d)\n",
                         cfg->demo_mode);
             }
+            if (cfg->tcp_stats_enabled) {
+                if (cpe_agent_tcp_tick(a) > 0) {
+                    if (cpe_agent_emit_flush(a) < 0) {
+                        fprintf(stderr, "cpe_agent: tcp emit_flush failed\n");
+                    }
+                }
+            }
+            if (ipc) {
+                (void)cpe_ipc_server_poll(ipc);
+            }
             drain_events(a);
             ticks++;
             if (opts->max_ticks > 0 && ticks >= opts->max_ticks) {
                 break;
             }
         }
-        msleep(interval);
+        /* Slice sleep so UDS stays responsive between sample intervals. */
+        ipc_slice = 200;
+        {
+            uint32_t left = interval;
+            while (left > 0 && !g_stop) {
+                uint32_t step = left > ipc_slice ? ipc_slice : left;
+                msleep(step);
+                if (ipc) {
+                    (void)cpe_ipc_server_poll(ipc);
+                }
+                left -= step;
+            }
+        }
     }
+    cpe_ipc_server_destroy(ipc);
     return 0;
 }

@@ -13,8 +13,9 @@ start_service() {
 	procd_set_param command /usr/sbin/cpe_agent \
 		--config "$CONFIG" \
 		--router-id "$(cat /proc/sys/kernel/hostname 2>/dev/null || echo cpe)"
-	# CAP_NET_RAW for live ICMP when SOCK_DGRAM IPPROTO_ICMP unavailable
-	procd_set_param capabilities CAP_NET_RAW
+	mkdir -p /var/run/netforensics
+	# CAP_NET_RAW: live ICMP; CAP_NET_ADMIN: NFLOG TCP stats + control socket parent
+	procd_set_param capabilities CAP_NET_RAW,CAP_NET_ADMIN
 	procd_set_param limits core="0 0"
 	procd_set_param respawn 3600 5 0
 	procd_set_param stdout 1

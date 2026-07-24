@@ -6,6 +6,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "cpe_agent.h"
+#include "cpe_ipc.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -55,20 +56,24 @@ int cpe_agent_hup_take(void)
 }
 
 typedef struct {
-    cpe_agent_t *agent;
-    uv_timer_t   timer;
-    uv_signal_t  sigint;
-    uv_signal_t  sigterm;
-    uv_signal_t  sighup;
-    unsigned     max_ticks;
-    unsigned     ticks;
-    int          rc;
-    const char  *config_path;
-    const char  *router_override;
-    uint32_t     last_interval_ms;
+    cpe_agent_t      *agent;
+    uv_timer_t        timer;
+    uv_timer_t        ipc_timer;
+    uv_signal_t       sigint;
+    uv_signal_t       sigterm;
+    uv_signal_t       sighup;
+    unsigned          max_ticks;
+    unsigned          ticks;
+    int               rc;
+    const char       *config_path;
+    const char       *router_override;
+    uint32_t          last_interval_ms;
+    cpe_ipc_server_t *ipc;
+    int               ipc_timer_inited;
 } cpe_uv_ctx_t;
 
 static void on_timer(uv_timer_t *t);
+static void on_ipc_timer(uv_timer_t *t);
 
 static void drain_events(cpe_agent_t *a)
 {
@@ -147,6 +152,14 @@ static void on_timer(uv_timer_t *t)
             fprintf(stderr, "cpe_agent: sample_tick failed (demo=%d)\n",
                     cfg->demo_mode);
         }
+        /* NFLOG TCP control-plane stats (optional; soft-fail without caps). */
+        if (cfg->tcp_stats_enabled) {
+            if (cpe_agent_tcp_tick(ctx->agent) > 0) {
+                if (cpe_agent_emit_flush(ctx->agent) < 0) {
+                    fprintf(stderr, "cpe_agent: tcp emit_flush failed\n");
+                }
+            }
+        }
         drain_events(ctx->agent);
         ctx->ticks++;
         if (ctx->max_ticks > 0 && ctx->ticks >= ctx->max_ticks) {
@@ -183,19 +196,50 @@ int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts)
     g_stop = 0;
     g_hup = 0;
 
+    if (!opts->ipc_disable) {
+        const char *ipath = opts->ipc_socket_override;
+        char ierr[160];
+        if (!ipath || !ipath[0]) {
+            ipath = cfg->ipc_socket;
+        }
+        if (ipath && ipath[0] && strcmp(ipath, "off") != 0 &&
+            strcmp(ipath, "none") != 0) {
+            ierr[0] = '\0';
+            ctx.ipc = cpe_ipc_server_create(a, ipath, ierr, sizeof(ierr));
+            if (!ctx.ipc) {
+                fprintf(stderr, "cpe_agent: ipc listen failed (%s): %s\n",
+                        ipath, ierr[0] ? ierr : "error");
+                /* Continue without ctl socket (telemetry still works). */
+            } else {
+                fprintf(stderr, "cpe_agent: control socket %s\n",
+                        cpe_ipc_server_path(ctx.ipc));
+            }
+        }
+    }
+
     loop = uv_default_loop();
     if (!loop) {
+        cpe_ipc_server_destroy(ctx.ipc);
         return 1;
     }
 
     if (uv_timer_init(loop, &ctx.timer) != 0) {
+        cpe_ipc_server_destroy(ctx.ipc);
         return 1;
     }
     ctx.timer.data = &ctx;
     interval = cfg->demo_interval_ms ? cfg->demo_interval_ms : 5000;
     ctx.last_interval_ms = (uint32_t)interval;
     if (uv_timer_start(&ctx.timer, on_timer, 10, interval) != 0) {
+        cpe_ipc_server_destroy(ctx.ipc);
         return 1;
+    }
+
+    /* Poll control socket every 200ms so cpe_ctl stays responsive. */
+    if (ctx.ipc && uv_timer_init(loop, &ctx.ipc_timer) == 0) {
+        ctx.ipc_timer_inited = 1;
+        ctx.ipc_timer.data = &ctx;
+        (void)uv_timer_start(&ctx.ipc_timer, on_ipc_timer, 50, 200);
     }
 
     if (uv_signal_init(loop, &ctx.sigint) == 0) {
@@ -212,10 +256,29 @@ int cpe_agent_run_uv(cpe_agent_t *a, const cpe_agent_run_opts_t *opts)
     (void)uv_run(loop, UV_RUN_DEFAULT);
 
     uv_close((uv_handle_t *)&ctx.timer, NULL);
+    if (ctx.ipc_timer_inited) {
+        uv_close((uv_handle_t *)&ctx.ipc_timer, NULL);
+    }
     uv_close((uv_handle_t *)&ctx.sigint, NULL);
     uv_close((uv_handle_t *)&ctx.sigterm, NULL);
     uv_close((uv_handle_t *)&ctx.sighup, NULL);
     (void)uv_run(loop, UV_RUN_DEFAULT);
 
+    cpe_ipc_server_destroy(ctx.ipc);
     return ctx.rc;
+}
+
+static void on_ipc_timer(uv_timer_t *t)
+{
+    cpe_uv_ctx_t *ctx = (cpe_uv_ctx_t *)t->data;
+    if (!ctx) {
+        return;
+    }
+    if (g_stop) {
+        uv_stop(t->loop);
+        return;
+    }
+    if (ctx->ipc) {
+        (void)cpe_ipc_server_poll(ctx->ipc);
+    }
 }

@@ -10,6 +10,7 @@
 #define CPE_AGENT_H
 
 #include "cpe_agent_config.h"
+#include "cpe_tcp_stats.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -23,7 +24,7 @@ extern "C" {
 #define CPE_PERF_TARGET_MAX  64
 #define CPE_PERF_TS_MAX      40
 #define CPE_PERF_META_MAX    128
-#define CPE_NDJSON_LINE_MAX  512
+#define CPE_NDJSON_LINE_MAX  768
 #define CPE_SPOOL_DEFAULT    256
 
 typedef enum {
@@ -292,6 +293,57 @@ int cpe_agent_feed_nfct(cpe_agent_t *a, const uint8_t *data, size_t len,
 /** Count of successful nfct observations since create. */
 uint64_t cpe_agent_nfct_obs_count(const cpe_agent_t *a);
 
+/* ---- TCP NFLOG stats (type=cpe_tcp) ---- */
+
+/**
+ * Open / (re)bind NFLOG group from config. Soft-fails without CAP_NET_ADMIN.
+ * @return 0 ok or disabled, -1 hard error.
+ */
+int cpe_agent_tcp_open(cpe_agent_t *a);
+void cpe_agent_tcp_close(cpe_agent_t *a);
+
+/**
+ * Non-blocking drain of NFLOG socket; update in-memory aggregates.
+ * @p max_msgs 0 → 64. @return packets walked, or -1.
+ */
+int cpe_agent_tcp_poll(cpe_agent_t *a, unsigned max_msgs);
+
+/**
+ * Timer path: poll NFLOG + periodically emit summary/top remotes/prefixes.
+ * @return NDJSON lines enqueued this tick, 0 if nothing, -1 on error.
+ */
+int cpe_agent_tcp_tick(cpe_agent_t *a);
+
+/** Emit summary + top-N remotes + top-N prefixes as cpe_tcp NDJSON. */
+int cpe_agent_tcp_emit(cpe_agent_t *a, unsigned top_n);
+
+/** Feed a raw L3 IP packet (tests / synthetic). @return 0 ok, -1 parse fail. */
+int cpe_agent_tcp_feed_payload(cpe_agent_t *a, const uint8_t *ip_pkt,
+                               size_t len);
+
+/** Feed a raw netlink NFLOG message buffer (tests). */
+int cpe_agent_tcp_feed_nflog(cpe_agent_t *a, const uint8_t *nl_msg, size_t len);
+
+/** Copy full snapshot; @return 0 ok, -1 if no state. */
+int cpe_agent_tcp_snapshot(const cpe_agent_t *a, cpe_tcp_snapshot_t *out);
+
+/** Lookup one remote; @return 0 ok, -1 missing. */
+int cpe_agent_tcp_remote(const cpe_agent_t *a, const char *remote_ip,
+                         cpe_tcp_remote_t *out);
+
+/** Lookup one prefix string (e.g. "45.57.0.0/16"); @return 0 ok, -1 missing. */
+int cpe_agent_tcp_prefix(const cpe_agent_t *a, const char *prefix,
+                         cpe_tcp_prefix_t *out);
+
+/** Clear counters (keeps NFLOG fd). */
+void cpe_agent_tcp_reset(cpe_agent_t *a);
+
+/** Last NFLOG open error, or NULL. */
+const char *cpe_agent_tcp_last_error(const cpe_agent_t *a);
+
+/** NFLOG fd for host poll integration, or -1. */
+int cpe_agent_tcp_fd(const cpe_agent_t *a);
+
 /** Spool: push a complete NDJSON line (without requiring trailing \\n). */
 int    cpe_agent_spool_push_line(cpe_agent_t *a, const char *line);
 size_t cpe_agent_spool_depth(const cpe_agent_t *a);
@@ -320,6 +372,8 @@ typedef struct {
     unsigned    max_ticks;          /**< 0 = run until signal */
     const char *config_path;        /**< YAML path for SIGHUP shadow reload */
     const char *router_id_override; /**< re-applied after each HUP load */
+    const char *ipc_socket_override;/**< optional UDS path; NULL → config */
+    int         ipc_disable;        /**< 1 = do not open control socket */
 } cpe_agent_run_opts_t;
 
 /**

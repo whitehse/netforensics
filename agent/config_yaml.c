@@ -235,6 +235,77 @@ static int apply_scalar(cpe_agent_config_t *c, const char *key, const char *val,
         c->egress_tls_insecure = iv;
         return 0;
     }
+    if (strcmp(key, "tcp_stats.enabled") == 0 ||
+        strcmp(key, "tcp_stats_enabled") == 0) {
+        if (parse_bool(val, &iv) != 0) {
+            FAIL("invalid bool");
+        }
+        c->tcp_stats_enabled = iv;
+        return 0;
+    }
+    if (strcmp(key, "tcp_stats.nflog_group") == 0 ||
+        strcmp(key, "tcp_nflog_group") == 0) {
+        if (parse_u32(val, &u32) != 0 || u32 == 0 || u32 > 65535u) {
+            FAIL("invalid");
+        }
+        c->tcp_nflog_group = (uint16_t)u32;
+        return 0;
+    }
+    if (strcmp(key, "tcp_stats.nflog_size") == 0 ||
+        strcmp(key, "tcp_nflog_size") == 0) {
+        if (parse_u32(val, &u32) != 0 || u32 == 0) {
+            FAIL("invalid");
+        }
+        c->tcp_nflog_size = u32;
+        return 0;
+    }
+    if (strcmp(key, "tcp_stats.emit_interval_ms") == 0 ||
+        strcmp(key, "tcp_emit_interval_ms") == 0) {
+        if (parse_u32(val, &u32) != 0 || u32 == 0) {
+            FAIL("invalid");
+        }
+        c->tcp_emit_interval_ms = u32;
+        return 0;
+    }
+    if (strcmp(key, "tcp_stats.emit_top_n") == 0 ||
+        strcmp(key, "tcp_emit_top_n") == 0) {
+        if (parse_u32(val, &u32) != 0 || u32 == 0) {
+            FAIL("invalid");
+        }
+        c->tcp_emit_top_n = u32;
+        return 0;
+    }
+    if (strcmp(key, "tcp_stats.prefix_len") == 0 ||
+        strcmp(key, "tcp_prefix_len") == 0) {
+        if (parse_u32(val, &u32) != 0 || u32 == 0 || u32 > 32u) {
+            FAIL("invalid");
+        }
+        c->tcp_prefix_len = (uint8_t)u32;
+        return 0;
+    }
+    if (strcmp(key, "ipc.socket") == 0 || strcmp(key, "ipc_socket") == 0 ||
+        strcmp(key, "ipc.path") == 0) {
+        if (copy_str(c->ipc_socket, sizeof(c->ipc_socket), val) != 0) {
+            FAIL("too long");
+        }
+        return 0;
+    }
+    if (strcmp(key, "proxies.openai_url") == 0 ||
+        strcmp(key, "openai_proxy_url") == 0) {
+        if (copy_str(c->openai_proxy_url, sizeof(c->openai_proxy_url), val) !=
+            0) {
+            FAIL("too long");
+        }
+        return 0;
+    }
+    if (strcmp(key, "proxies.postgres_url") == 0 ||
+        strcmp(key, "postgres_proxy_url") == 0) {
+        if (copy_str(c->postgres_proxy_url, sizeof(c->postgres_proxy_url),
+                     val) != 0) {
+            FAIL("too long");
+        }
+        return 0;
+    }
 #undef FAIL
     return 0;
 }
@@ -281,6 +352,25 @@ static const char *const g_paths[] = {
     "tls_key_file",
     "egress.tls_insecure",
     "egress.insecure",
+    "tcp_stats.enabled",
+    "tcp_stats_enabled",
+    "tcp_stats.nflog_group",
+    "tcp_nflog_group",
+    "tcp_stats.nflog_size",
+    "tcp_nflog_size",
+    "tcp_stats.emit_interval_ms",
+    "tcp_emit_interval_ms",
+    "tcp_stats.emit_top_n",
+    "tcp_emit_top_n",
+    "tcp_stats.prefix_len",
+    "tcp_prefix_len",
+    "ipc.socket",
+    "ipc_socket",
+    "ipc.path",
+    "proxies.openai_url",
+    "openai_proxy_url",
+    "proxies.postgres_url",
+    "postgres_proxy_url",
     NULL
 };
 

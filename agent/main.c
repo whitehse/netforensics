@@ -21,16 +21,18 @@ static void usage(const char *argv0)
             "  --router-id ID    override router_id (preserved across SIGHUP)\n"
             "  --demo            force demo_mode (synthetic ping → cpe_perf)\n"
             "  --once            emit one demo sample then exit\n"
-            "  --lua / --repl    interactive Lua REPL (linenoise history)\n"
+            "  --socket PATH     control UDS path (default from ipc.socket)\n"
+            "  --no-ipc          do not open control socket\n"
+            "  --lua / --repl    local Lua REPL (embedded; prefer cpe_ctl)\n"
             "  --lua-eval SRC    run one Lua chunk then exit\n"
             "  --lua-file PATH   run a Lua tool script then exit\n"
             "  --history PATH    REPL history file (default ~/.cpe_agent_history)\n"
             "  --help\n"
             "\n"
-            "forensicsd remains the conntrack/wifi NDJSON daemon (ADR-002).\n"
-            "This agent emits type=cpe_perf performance samples (N-A05).\n"
-            "emit.mode=spool appends to emit.path; SIGHUP reloads --config.\n"
-            "Lua tools: see docs/guides/cpe-agent-lua.md  (cpe.help() in REPL).\n",
+            "Daemon mode (default): sample loop + optional TCP NFLOG stats,\n"
+            "POST NDJSON to edgehost telemetry → ClickHouse; control UDS for\n"
+            "cpe_ctl (human Lua front-end). Prefer `cpe_ctl` for interactive use.\n"
+            "See docs/guides/cpe-agent-daemon.md\n",
             argv0);
 }
 
@@ -41,9 +43,11 @@ int main(int argc, char **argv)
     const char *history_path = NULL;
     const char *lua_eval = NULL;
     const char *lua_file = NULL;
+    const char *ipc_socket = NULL;
     int force_demo = 0;
     int once = 0;
     int lua_repl = 0;
+    int no_ipc = 0;
     cpe_agent_config_t cfg;
     cpe_agent_t *agent;
     cpe_agent_event_t ev;
@@ -63,12 +67,14 @@ int main(int argc, char **argv)
         {"lua-eval", required_argument, 0, 'e'},
         {"lua-file", required_argument, 0, 'f'},
         {"history", required_argument, 0, 'H'},
+        {"socket", required_argument, 0, 'S'},
+        {"no-ipc", no_argument, 0, 'N'},
         {"help", no_argument, 0, 'h'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "c:r:d1ie:f:H:h", long_opts, NULL)) !=
-           -1) {
+    while ((opt = getopt_long(argc, argv, "c:r:d1ie:f:H:S:Nh", long_opts,
+                              NULL)) != -1) {
         switch (opt) {
         case 'c':
             config_path = optarg;
@@ -93,6 +99,12 @@ int main(int argc, char **argv)
             break;
         case 'H':
             history_path = optarg;
+            break;
+        case 'S':
+            ipc_socket = optarg;
+            break;
+        case 'N':
+            no_ipc = 1;
             break;
         case 'h':
             usage(argv[0]);
@@ -190,6 +202,8 @@ int main(int argc, char **argv)
     run_opts.max_ticks = 0;
     run_opts.config_path = config_path;
     run_opts.router_id_override = router_override;
+    run_opts.ipc_socket_override = ipc_socket;
+    run_opts.ipc_disable = no_ipc;
     rc = cpe_agent_run_uv(agent, &run_opts);
     cpe_agent_destroy(agent);
     return rc;

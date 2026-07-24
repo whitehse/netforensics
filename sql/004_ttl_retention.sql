@@ -20,6 +20,10 @@ ALTER TABLE forensics.cpe_wifi_metrics
 ALTER TABLE forensics.cpe_perf_samples
     MODIFY TTL ts + INTERVAL 180 DAY DELETE;
 
+-- TCP NFLOG control-plane stats: 90 days (higher volume than ping samples)
+ALTER TABLE forensics.cpe_tcp_stats
+    MODIFY TTL ts + INTERVAL 90 DAY DELETE;
+
 -- BGP updates: 365 days for historical RIB dictionary source
 ALTER TABLE forensics.bgp_updates
     MODIFY TTL timestamp + INTERVAL 365 DAY DELETE;

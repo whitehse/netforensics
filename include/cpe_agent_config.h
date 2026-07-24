@@ -48,6 +48,29 @@ typedef struct {
     char     tls_key_file[CPE_CFG_PATH_MAX];
     int      egress_tls_insecure; /* 1 = skip peer verify (default without CA) */
     /**
+     * TCP control-plane stats from NFLOG (SYN/FIN/RST).
+     * Field path on Calix u6.3 / OpenWrt: iptables NFLOG group (default 5).
+     */
+    int      tcp_stats_enabled;     /* 0 = off (default); 1 = poll NFLOG */
+    uint16_t tcp_nflog_group;       /* 0 → 5 */
+    uint32_t tcp_nflog_size;        /* copy range bytes; 0 → 60 */
+    uint32_t tcp_emit_interval_ms;  /* 0 → 10000; summary+top emit period */
+    uint32_t tcp_emit_top_n;        /* 0 → 20; top remotes/prefixes per emit */
+    uint8_t  tcp_prefix_len;        /* 0 → 24; IPv4 aggregation mask */
+    /**
+     * Control-plane UDS for cpe_ctl (human/AI Lua front-end).
+     * Empty → /var/run/netforensics/cpe_agent.sock. Set "off" to disable.
+     */
+    char     ipc_socket[CPE_CFG_PATH_MAX];
+    /**
+     * Optional edgehost proxy base URLs (CPE never talks to CH/PG directly).
+     * egress.url remains the telemetry ingest path.
+     * openai_proxy_url: e.g. http://edgehost:18080/api/v1/openai/...
+     * postgres_proxy_url: reserved for future edgehost PG proxy.
+     */
+    char     openai_proxy_url[CPE_CFG_URL_MAX];
+    char     postgres_proxy_url[CPE_CFG_URL_MAX];
+    /**
      * Set by cpe_agent_apply_config on success (not loaded from YAML).
      */
     uint64_t generation;

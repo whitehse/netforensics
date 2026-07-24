@@ -101,6 +101,12 @@ static int l_config(lua_State *L)
     lua_setfield(L, -2, "spool_max_lines");
     lua_pushinteger(L, (lua_Integer)c->generation);
     lua_setfield(L, -2, "generation");
+    lua_pushboolean(L, c->tcp_stats_enabled ? 1 : 0);
+    lua_setfield(L, -2, "tcp_stats");
+    lua_pushinteger(L, (lua_Integer)c->tcp_nflog_group);
+    lua_setfield(L, -2, "tcp_nflog_group");
+    lua_pushinteger(L, (lua_Integer)c->tcp_prefix_len);
+    lua_setfield(L, -2, "tcp_prefix_len");
     return 1;
 }
 
@@ -795,6 +801,256 @@ static int l_ndjson(lua_State *L)
     return 1;
 }
 
+/* ---- TCP NFLOG stats ---- */
+
+static void push_tcp_remote(lua_State *L, const cpe_tcp_remote_t *r)
+{
+    lua_createtable(L, 0, 12);
+    lua_pushstring(L, r->remote_ip);
+    lua_setfield(L, -2, "remote_ip");
+    lua_pushstring(L, r->local_ip);
+    lua_setfield(L, -2, "local_ip");
+    lua_pushinteger(L, (lua_Integer)r->remote_port);
+    lua_setfield(L, -2, "remote_port");
+    lua_pushinteger(L, (lua_Integer)r->local_port);
+    lua_setfield(L, -2, "local_port");
+    lua_pushinteger(L, (lua_Integer)r->syn_count);
+    lua_setfield(L, -2, "syn");
+    lua_pushinteger(L, (lua_Integer)r->fin_count);
+    lua_setfield(L, -2, "fin");
+    lua_pushinteger(L, (lua_Integer)r->rst_count);
+    lua_setfield(L, -2, "rst");
+    lua_pushinteger(L, (lua_Integer)r->syn_retrans);
+    lua_setfield(L, -2, "syn_retrans");
+    lua_pushinteger(L, (lua_Integer)r->pkt_count);
+    lua_setfield(L, -2, "pkts");
+    lua_pushinteger(L, (lua_Integer)r->bytes_est);
+    lua_setfield(L, -2, "bytes");
+    lua_pushnumber(L, (lua_Number)cpe_tcp_loss_hint(
+                          r->syn_count, r->fin_count, r->rst_count,
+                          r->syn_retrans));
+    lua_setfield(L, -2, "loss_hint");
+}
+
+static void push_tcp_prefix(lua_State *L, const cpe_tcp_prefix_t *p)
+{
+    lua_createtable(L, 0, 10);
+    lua_pushstring(L, p->prefix);
+    lua_setfield(L, -2, "prefix");
+    lua_pushinteger(L, (lua_Integer)p->remote_count);
+    lua_setfield(L, -2, "remotes");
+    lua_pushinteger(L, (lua_Integer)p->syn_count);
+    lua_setfield(L, -2, "syn");
+    lua_pushinteger(L, (lua_Integer)p->fin_count);
+    lua_setfield(L, -2, "fin");
+    lua_pushinteger(L, (lua_Integer)p->rst_count);
+    lua_setfield(L, -2, "rst");
+    lua_pushinteger(L, (lua_Integer)p->syn_retrans);
+    lua_setfield(L, -2, "syn_retrans");
+    lua_pushinteger(L, (lua_Integer)p->pkt_count);
+    lua_setfield(L, -2, "pkts");
+    lua_pushinteger(L, (lua_Integer)p->bytes_est);
+    lua_setfield(L, -2, "bytes");
+    lua_pushnumber(L, (lua_Number)cpe_tcp_loss_hint(
+                          p->syn_count, p->fin_count, p->rst_count,
+                          p->syn_retrans));
+    lua_setfield(L, -2, "loss_hint");
+}
+
+static int l_tcp_poll(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    unsigned maxm = 64;
+    int n;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
+        maxm = (unsigned)luaL_checkinteger(L, 1);
+    }
+    n = cpe_agent_tcp_poll(a, maxm);
+    if (n < 0) {
+        return luaL_error(L, "tcp_poll failed");
+    }
+    lua_pushinteger(L, n);
+    return 1;
+}
+
+static int l_tcp_stats(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_tcp_snapshot_t snap;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    if (cpe_agent_tcp_snapshot(a, &snap) != 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_createtable(L, 0, 16);
+    lua_pushinteger(L, (lua_Integer)snap.nflog_group);
+    lua_setfield(L, -2, "nflog_group");
+    lua_pushinteger(L, (lua_Integer)snap.syn_total);
+    lua_setfield(L, -2, "syn");
+    lua_pushinteger(L, (lua_Integer)snap.fin_total);
+    lua_setfield(L, -2, "fin");
+    lua_pushinteger(L, (lua_Integer)snap.rst_total);
+    lua_setfield(L, -2, "rst");
+    lua_pushinteger(L, (lua_Integer)snap.syn_retrans_total);
+    lua_setfield(L, -2, "syn_retrans");
+    lua_pushinteger(L, (lua_Integer)snap.pkt_total);
+    lua_setfield(L, -2, "pkts");
+    lua_pushinteger(L, (lua_Integer)snap.bytes_total);
+    lua_setfield(L, -2, "bytes");
+    lua_pushinteger(L, (lua_Integer)snap.remote_count);
+    lua_setfield(L, -2, "remotes");
+    lua_pushinteger(L, (lua_Integer)snap.prefix_count);
+    lua_setfield(L, -2, "prefixes");
+    lua_pushinteger(L, (lua_Integer)snap.prefix_len);
+    lua_setfield(L, -2, "prefix_len");
+    lua_pushnumber(L, (lua_Number)cpe_tcp_loss_hint(
+                          snap.syn_total, snap.fin_total, snap.rst_total,
+                          snap.syn_retrans_total));
+    lua_setfield(L, -2, "loss_hint");
+    lua_pushstring(L, snap.ts_iso);
+    lua_setfield(L, -2, "ts");
+    lua_pushinteger(L, (lua_Integer)snap.pkts_parsed);
+    lua_setfield(L, -2, "pkts_parsed");
+    return 1;
+}
+
+static int l_tcp_by_ip(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_tcp_snapshot_t snap;
+    const char *ip = NULL;
+    uint32_t i;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
+        ip = luaL_checkstring(L, 1);
+    }
+    if (cpe_agent_tcp_snapshot(a, &snap) != 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    if (ip) {
+        cpe_tcp_remote_t r;
+        if (cpe_agent_tcp_remote(a, ip, &r) != 0) {
+            lua_pushnil(L);
+            return 1;
+        }
+        push_tcp_remote(L, &r);
+        return 1;
+    }
+    lua_createtable(L, (int)snap.remote_count, 0);
+    for (i = 0; i < snap.remote_count; i++) {
+        push_tcp_remote(L, &snap.remotes[i]);
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
+    }
+    return 1;
+}
+
+static int l_tcp_by_prefix(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_tcp_snapshot_t snap;
+    const char *pfx = NULL;
+    uint32_t i;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
+        pfx = luaL_checkstring(L, 1);
+    }
+    if (cpe_agent_tcp_snapshot(a, &snap) != 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    if (pfx) {
+        cpe_tcp_prefix_t p;
+        if (cpe_agent_tcp_prefix(a, pfx, &p) != 0) {
+            lua_pushnil(L);
+            return 1;
+        }
+        push_tcp_prefix(L, &p);
+        return 1;
+    }
+    lua_createtable(L, (int)snap.prefix_count, 0);
+    for (i = 0; i < snap.prefix_count; i++) {
+        push_tcp_prefix(L, &snap.prefixes[i]);
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
+    }
+    return 1;
+}
+
+static int l_tcp_emit(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    unsigned top_n = 0;
+    int n;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
+        top_n = (unsigned)luaL_checkinteger(L, 1);
+    }
+    n = cpe_agent_tcp_emit(a, top_n);
+    if (n < 0) {
+        return luaL_error(L, "tcp_emit failed");
+    }
+    lua_pushinteger(L, n);
+    return 1;
+}
+
+static int l_tcp_reset(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    cpe_agent_tcp_reset(a);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+static int l_tcp_open(lua_State *L)
+{
+    cpe_agent_t *a = l_agent(L);
+    cpe_agent_config_t cfg;
+    int rc;
+
+    if (!a) {
+        return luaL_error(L, "no agent");
+    }
+    cfg = *cpe_agent_config(a);
+    cfg.tcp_stats_enabled = 1;
+    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
+        cfg.tcp_nflog_group = (uint16_t)luaL_checkinteger(L, 1);
+    }
+    if (cpe_agent_apply_config(a, &cfg) != 0) {
+        drain_events(a);
+        return luaL_error(L, "enable tcp_stats failed");
+    }
+    drain_events(a);
+    rc = cpe_agent_tcp_open(a);
+    if (rc != 0) {
+        const char *e = cpe_agent_tcp_last_error(a);
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, e ? e : "nflog open failed");
+        return 2;
+    }
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 static const luaL_Reg cpe_funcs[] = {
     {"help", l_help},
     {"config", l_config},
@@ -821,6 +1077,13 @@ static const luaL_Reg cpe_funcs[] = {
     {"reload", l_reload},
     {"dofile", l_dofile_tool},
     {"ndjson", l_ndjson},
+    {"tcp_open", l_tcp_open},
+    {"tcp_poll", l_tcp_poll},
+    {"tcp_stats", l_tcp_stats},
+    {"tcp_by_ip", l_tcp_by_ip},
+    {"tcp_by_prefix", l_tcp_by_prefix},
+    {"tcp_emit", l_tcp_emit},
+    {"tcp_reset", l_tcp_reset},
     {NULL, NULL}
 };
 
@@ -866,8 +1129,16 @@ void cpe_lua_print_help(FILE *fp)
             "  cpe.spool_depth() / cpe.spool_drops()\n"
             "  cpe.reload([path])         -- re-read YAML\n"
             "  cpe.dofile(path)           -- run a tool script\n"
+            "  cpe.tcp_open([group])      -- enable + bind NFLOG (default group 5)\n"
+            "  cpe.tcp_poll([max])        -- drain NFLOG; return packet count\n"
+            "  cpe.tcp_stats()            -- summary SYN/FIN/RST/bytes/loss_hint\n"
+            "  cpe.tcp_by_ip([ip])        -- one remote or array of remotes\n"
+            "  cpe.tcp_by_prefix([cidr])  -- one prefix or array (e.g. Netflix CDN)\n"
+            "  cpe.tcp_emit([top_n])      -- push cpe_tcp NDJSON to spool\n"
+            "  cpe.tcp_reset()            -- clear TCP counters\n"
             "\n"
             "Note: synthetic demo probes are not exposed to Lua (C fuzz / dialectic only).\n"
+            "TCP stats need host iptables NFLOG rules + CAP_NET_ADMIN (or tcp_feed tests).\n"
             "REPL: quit | exit | Ctrl-D to leave. Up-arrow recalls history.\n"
             "AI harness: register tool scripts that call cpe.* and return tables.\n");
 }
