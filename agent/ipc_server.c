@@ -379,20 +379,29 @@ int cpe_ipc_handle_request(cpe_agent_t *a, const char *req_json, char *out,
     }
     if (strcmp(op, "flow_stats") == 0) {
         cpe_flow_snapshot_t snap;
+        cpe_flow_state_t *fst;
+        /* Refresh before reporting. */
+        (void)cpe_agent_flow_tick(a);
         if (cpe_agent_flow_snapshot(a, &snap) != 0) {
             return respond_err(out, out_sz, op, "no flow state");
         }
+        fst = cpe_agent_flow_state(a);
         n = snprintf(
             out, out_sz,
             "{\"ok\":true,\"op\":\"flow_stats\",\"data\":{"
-            "\"flow_count\":%u,\"events_in\":%llu,\"destroys_emitted\":%llu,"
-            "\"samples_emitted\":%llu,\"dumps\":%llu,\"open_ok\":%s,"
-            "\"ts\":\"%s\"}}",
+            "\"enabled\":%s,\"flow_count\":%u,\"events_in\":%llu,"
+            "\"destroys_emitted\":%llu,\"samples_emitted\":%llu,"
+            "\"dumps\":%llu,\"open_ok\":%s,\"open_err\":%s%s%s,"
+            "\"event_fd\":%d,\"dump_fd\":%d,\"ts\":\"%s\"}}",
+            (cfg->flow_acct_enabled) ? "true" : "false",
             (unsigned)snap.flow_count, (unsigned long long)snap.events_in,
             (unsigned long long)snap.destroys_emitted,
             (unsigned long long)snap.samples_emitted,
             (unsigned long long)snap.dumps, snap.open_ok ? "true" : "false",
-            snap.ts_iso);
+            snap.open_err[0] ? "\"" : "null",
+            snap.open_err[0] ? snap.open_err : "",
+            snap.open_err[0] ? "\"" : "", fst ? fst->fd : -1,
+            fst ? fst->dump_fd : -1, snap.ts_iso);
         return (n < 0 || (size_t)n >= out_sz) ? -1 : 0;
     }
     if (strcmp(op, "flow_list") == 0) {
@@ -406,8 +415,27 @@ int cpe_ipc_handle_request(cpe_agent_t *a, const char *req_json, char *out,
         if (limit == 0 || limit > 64) {
             limit = 32;
         }
+        /* Force poll+dump so ctl sees current conntrack without waiting. */
+        (void)cpe_agent_flow_tick(a);
         if (cpe_agent_flow_snapshot(a, &snap) != 0) {
             return respond_err(out, out_sz, op, "no flow state");
+        }
+        if (!cfg->flow_acct_enabled) {
+            n = snprintf(
+                out, out_sz,
+                "{\"ok\":true,\"op\":\"flow_list\",\"data\":{\"flows\":[],"
+                "\"count\":0,\"hint\":\"flow_acct.enabled is false in "
+                "cpe_agent.yaml — set true and restart\"}}");
+            return (n < 0 || (size_t)n >= out_sz) ? -1 : 0;
+        }
+        if (!snap.open_ok) {
+            n = snprintf(
+                out, out_sz,
+                "{\"ok\":true,\"op\":\"flow_list\",\"data\":{\"flows\":[],"
+                "\"count\":0,\"hint\":\"conntrack netlink open failed: %s "
+                "(need CAP_NET_ADMIN / root)\"}}",
+                snap.open_err[0] ? snap.open_err : "unknown");
+            return (n < 0 || (size_t)n >= out_sz) ? -1 : 0;
         }
         pos = 0;
         wn = snprintf(out + pos, out_sz - pos,

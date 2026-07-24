@@ -12,6 +12,7 @@
 #include "nfct.h"
 
 #include <arpa/inet.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -375,44 +376,117 @@ static int apply_event(cpe_agent_t *a, cpe_flow_state_t *st,
     return 0;
 }
 
-static int drain_fd(cpe_agent_t *a, cpe_flow_state_t *st, int fd, unsigned max_msgs)
+/**
+ * Feed one netlink message at a time so the small nfct event queue cannot
+ * silently drop a full conntrack dump (NFCT_MAX_Q is only 32).
+ */
+static int feed_and_apply(cpe_agent_t *a, cpe_flow_state_t *st, nfct_ctx *ctx,
+                          const uint8_t *buf, size_t len, uint64_t now_ms)
 {
-    uint8_t buf[8192];
+    size_t off = 0;
+    int applied = 0;
+
+    if (!buf || len < 16) {
+        return 0;
+    }
+    while (off + 16 <= len) {
+        uint32_t nl_len;
+        size_t aligned;
+        nfct_event_t ev;
+
+        nl_len = (uint32_t)buf[off] | ((uint32_t)buf[off + 1] << 8) |
+                 ((uint32_t)buf[off + 2] << 16) | ((uint32_t)buf[off + 3] << 24);
+        if (nl_len < 16 || off + nl_len > len) {
+            break;
+        }
+        /* NLMSG_DONE / NLMSG_ERROR: still feed (parser may ignore). */
+        if (nfct_feed_input(ctx, buf + off, nl_len) != 0) {
+            /* keep going */
+        }
+        while (nfct_next_event(ctx, &ev) == 1) {
+            if (apply_event(a, st, &ev, now_ms) >= 0) {
+                /* count every applied update, not only destroy emits */
+                applied++;
+            }
+        }
+        aligned = (nl_len + 3u) & ~3u;
+        if (aligned == 0) {
+            break;
+        }
+        off += aligned;
+    }
+    return applied;
+}
+
+/**
+ * Drain @p fd. When @p wait_ms > 0, poll for the first data (dump replies
+ * are not instant on non-blocking sockets — previously we returned empty).
+ */
+static int drain_fd(cpe_agent_t *a, cpe_flow_state_t *st, int fd,
+                    unsigned max_msgs, int wait_ms)
+{
+    uint8_t buf[16384];
     unsigned n = 0;
-    int emitted = 0;
+    int applied = 0;
     uint64_t now = mono_ms();
+    nfct_config_t ncfg;
     nfct_ctx *ctx;
+    int saw_data = 0;
 
     if (fd < 0 || !a) {
         return 0;
     }
-    /* Reuse agent nfct parser via feed path that allocates? Create temp. */
-    ctx = nfct_create(NFCT_ROLE_COLLECTOR);
+    memset(&ncfg, 0, sizeof(ncfg));
+    ncfg.event_queue_size = 32; /* one nlmsg at a time → enough */
+    ctx = nfct_create_with_config(NFCT_ROLE_COLLECTOR, &ncfg);
     if (!ctx) {
         return -1;
     }
 
+    if (wait_ms > 0) {
+        struct pollfd pfd;
+        pfd.fd = fd;
+        pfd.events = POLLIN;
+        if (poll(&pfd, 1, wait_ms) <= 0) {
+            nfct_destroy(ctx);
+            return 0;
+        }
+    }
+
     while (n < max_msgs) {
-        int rd = nfct_netlink_recv(fd, buf, sizeof(buf));
-        nfct_event_t ev;
+        int rd;
+        if (saw_data && wait_ms > 0) {
+            struct pollfd pfd;
+            pfd.fd = fd;
+            pfd.events = POLLIN;
+            /* After first byte, drain quickly; stop when kernel goes idle. */
+            if (poll(&pfd, 1, 50) <= 0) {
+                break;
+            }
+        }
+        rd = nfct_netlink_recv(fd, buf, sizeof(buf));
         if (rd == 0) {
+            if (!saw_data && wait_ms > 0) {
+                /* Spurious; wait a bit more once. */
+                struct pollfd pfd;
+                pfd.fd = fd;
+                pfd.events = POLLIN;
+                if (poll(&pfd, 1, wait_ms) <= 0) {
+                    break;
+                }
+                continue;
+            }
             break;
         }
         if (rd < 0) {
             break;
         }
-        if (nfct_feed_input(ctx, buf, (size_t)rd) != 0) {
-            /* continue */
-        }
-        while (nfct_next_event(ctx, &ev) == 1) {
-            if (apply_event(a, st, &ev, now) > 0) {
-                emitted++;
-            }
-        }
+        saw_data = 1;
+        applied += feed_and_apply(a, st, ctx, buf, (size_t)rd, now);
         n++;
     }
     nfct_destroy(ctx);
-    return emitted;
+    return applied;
 }
 
 int cpe_agent_flow_open(cpe_agent_t *a)
@@ -442,12 +516,19 @@ int cpe_agent_flow_open(cpe_agent_t *a)
     }
     (void)nfct_netlink_set_nonblock(st->fd);
     st->dump_fd = nfct_netlink_open_dump(err, sizeof(err));
-    if (st->dump_fd >= 0) {
+    if (st->dump_fd < 0) {
+        /* Events still work; live list will be thin without dumps. */
+        fprintf(stderr, "cpe_agent: flow_acct: dump socket failed: %s\n",
+                err[0] ? err : "unknown");
+    } else {
         (void)nfct_netlink_set_nonblock(st->dump_fd);
     }
     st->open_ok = 1;
     st->open_err[0] = '\0';
     st->enabled = 1;
+    fprintf(stderr,
+            "cpe_agent: flow_acct open ok (events fd=%d dump fd=%d)\n", st->fd,
+            st->dump_fd);
     return 0;
 }
 
@@ -485,13 +566,14 @@ int cpe_agent_flow_poll(cpe_agent_t *a, unsigned max_msgs)
             return 0;
         }
     }
-    n = drain_fd(a, st, st->fd, max_msgs ? max_msgs : 64);
+    /* Event multicast is continuous; no wait needed. */
+    n = drain_fd(a, st, st->fd, max_msgs ? max_msgs : 64, 0);
     return n;
 }
 
 static int maybe_dump(cpe_agent_t *a, cpe_flow_state_t *st, uint64_t now)
 {
-    int emitted = 0;
+    int applied = 0;
     if (st->dump_fd < 0) {
         return 0;
     }
@@ -507,9 +589,12 @@ static int maybe_dump(cpe_agent_t *a, cpe_flow_state_t *st, uint64_t now)
     }
     st->last_dump_ms = now;
     st->dumps++;
-    /* Drain dump replies (may be multipacket). */
-    emitted = drain_fd(a, st, st->dump_fd, 256);
-    return emitted;
+    /*
+     * Wait up to 400 ms for the first dump reply, then drain until idle.
+     * Non-blocking recv alone returned EAGAIN immediately → empty flow_list.
+     */
+    applied = drain_fd(a, st, st->dump_fd, 512, 400);
+    return applied;
 }
 
 static int emit_top_samples(cpe_agent_t *a, cpe_flow_state_t *st, uint64_t now)
@@ -577,13 +662,25 @@ int cpe_agent_flow_tick(cpe_agent_t *a)
     cpe_flow_state_t *st;
     uint64_t now;
     int n = 0;
+    const cpe_agent_config_t *cfg;
 
     if (!a) {
         return -1;
     }
     st = cpe_agent_flow_state(a);
-    if (!st || !st->enabled) {
-        return 0;
+    cfg = cpe_agent_config(a);
+    if (!st) {
+        return -1;
+    }
+    /* Allow tick when config wants flow_acct even if prior open failed. */
+    if (!st->enabled) {
+        if (cfg && cfg->flow_acct_enabled) {
+            if (cpe_agent_flow_open(a) != 0) {
+                return 0;
+            }
+        } else {
+            return 0;
+        }
     }
     now = mono_ms();
     st->last_tick_ms = now;

@@ -29,6 +29,16 @@ tcp_stats:
   emit_top_n: 15
   prefix_len: 24
 
+# Per-flow bandwidth (sysctl net.netfilter.nf_conntrack_acct=1)
+flow_acct:
+  enabled: true
+  poll_interval_ms: 200
+  dump_interval_ms: 200
+  sample_emit_ms: 2000
+  sample_top_n: 32
+  emit_destroy: true
+  emit_new: false
+
 ipc:
   socket: /var/run/netforensics/cpe_agent.sock
 

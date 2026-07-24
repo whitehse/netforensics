@@ -295,13 +295,28 @@ int cpe_agent_apply_config(cpe_agent_t *a, const cpe_agent_config_t *cfg)
         if (a->cfg.flow_acct_enabled) {
             if (!flow_was || a->flow.fd < 0) {
                 cpe_agent_flow_close(a);
-                (void)cpe_agent_flow_open(a);
+                if (cpe_agent_flow_open(a) != 0) {
+                    fprintf(stderr,
+                            "cpe_agent: flow_acct open failed: %s "
+                            "(flow_list will be empty until fixed)\n",
+                            a->flow.open_err[0] ? a->flow.open_err
+                                                : "unknown");
+                }
             } else {
                 a->flow.enabled = 1;
             }
         } else if (flow_was) {
             cpe_agent_flow_close(a);
             a->flow.enabled = 0;
+        } else if (!a->cfg.flow_acct_enabled) {
+            /* Help operators who expect flows while only tcp_stats is on. */
+            static int once;
+            if (!once && a->cfg.tcp_stats_enabled) {
+                once = 1;
+                fprintf(stderr,
+                        "cpe_agent: flow_acct.enabled is false — "
+                        "cpe_ctl flow_list will stay empty\n");
+            }
         }
     }
     (void)eq_push(a, CPE_AGENT_EVENT_CONFIG_APPLIED, "ok", 0, 0);

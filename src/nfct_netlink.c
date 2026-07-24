@@ -165,7 +165,8 @@ int nfct_netlink_dump_request(int dump_fd)
     req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
     req.nlh.nlmsg_seq = 1;
     req.nlh.nlmsg_pid = 0;
-    req.nf.nfgen_family = AF_UNSPEC;
+    /* AF_INET dump; many OpenWrt kernels answer IPv4 CT dumps this way. */
+    req.nf.nfgen_family = AF_INET;
     req.nf.version = NFNETLINK_V0;
     req.nf.res_id = 0;
 
@@ -176,5 +177,10 @@ int nfct_netlink_dump_request(int dump_fd)
     if (n != (ssize_t)sizeof(req)) {
         return -1;
     }
+    /* Also request IPv6 table when present (best-effort second dump). */
+    req.nf.nfgen_family = AF_INET6;
+    req.nlh.nlmsg_seq = 2;
+    (void)sendto(dump_fd, &req, sizeof(req), 0, (struct sockaddr *)&sa,
+                 sizeof(sa));
     return 0;
 }
