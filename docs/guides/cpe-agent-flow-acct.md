@@ -46,13 +46,51 @@ Field profile: `config/cpe_agent.field.yaml`.
 - `bytes_up` / `orig_bytes` — LAN → internet (upload)
 - `bytes_down` / `reply_bytes` — internet → LAN (download)
 
-## On-box ops
+## On-box ops (live table on the CPE)
+
+Requires running `cpe_agent` with `flow_acct.enabled: true` and the control
+socket.
 
 ```bash
-cpe_ctl flow_stats
-cpe_ctl flow_list
-cpe_ctl flow_tick
+cpe_ctl flow_stats          # counters / open_ok
+cpe_ctl flow_list           # live conntrack table snapshot
+cpe_ctl flow_list 64        # optional limit
+cpe_ctl flow_tick           # force one poll/dump pass
 ```
+
+## Historical flows (ClickHouse)
+
+`cpe_ctl` can query **ClickHouse HTTP** for stored `cpe_flow` rows. Use this on
+an ops/lab host that can reach CH (typically `127.0.0.1:8123` on edgehost).
+Field CPEs do not open ClickHouse; they only POST NDJSON to the edgehost proxy.
+
+```bash
+# Table output (default)
+cpe_ctl flow_list --history --ch-password passw0rd
+cpe_ctl flows --history --router-id lab-cpe-1 --limit 20 --ch-password passw0rd
+
+# Env instead of flags
+export CPE_CH_URL=http://127.0.0.1:8123
+export CPE_CH_USER=default
+export CPE_CH_PASSWORD=passw0rd
+cpe_ctl flow_list --history --router-id cpe-42
+
+# Raw JSONEachRow
+cpe_ctl flow_list --history --raw --limit 5
+```
+
+| Flag / env | Meaning |
+|------------|---------|
+| `--history` | Query ClickHouse instead of the daemon |
+| `--ch-url` / `CPE_CH_URL` | Base URL (default `http://127.0.0.1:8123`) |
+| `--ch-user` / `CPE_CH_USER` | User (default `default`) |
+| `--ch-password` / `CPE_CH_PASSWORD` | Password |
+| `--ch-table` | Table (default `edgehost.cpe_flows`) |
+| `--router-id` | Filter by CPE id |
+| `--limit N` | Max rows (default 50) |
+| `--raw` | Print JSONEachRow instead of a table |
+
+Alias: `cpe_ctl flow_history …` is the same as `flow_list --history …`.
 
 ## Edgehost UI
 

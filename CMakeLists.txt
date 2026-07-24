@@ -344,7 +344,7 @@ if(CPE_AGENT_STATIC)
 endif()
 
 # Human/AI control client (queries daemon over UDS; Lua when enabled)
-add_executable(cpe_ctl agent/ctl_main.c)
+add_executable(cpe_ctl agent/ctl_main.c agent/ctl_ch_query.c)
 target_link_libraries(cpe_ctl PRIVATE cpe_agent_lib)
 if(CPE_AGENT_STATIC)
     target_link_options(cpe_ctl PRIVATE -static)
